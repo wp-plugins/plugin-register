@@ -18,7 +18,7 @@ By including a small function in your plugin which is registered to be run on ac
 
 So, what do you need to put in your plugin? This (remember to change the [PLACEHOLDER TEXT]):
 
-`register_activation_hook( __FILE__, [YOUR UNIQUE PLUGIN SLUG]_plugin_register );
+`register_activation_hook( __FILE__, "[YOUR UNIQUE PLUGIN SLUG]_plugin_register" );
 function [YOUR UNIQUE PLUGIN SLUG]_plugin_register() {
 	$plugin = "[YOUR PLUGIN NAME]";
 	$version = "[YOUR PLUGIN VERSION]";

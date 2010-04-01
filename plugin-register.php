@@ -289,7 +289,7 @@ function pluginregister_main_report() {
 	<h3 style="padding-top:2em">' . __( "Using Plugin Register in your plugins", "pluginregister" ) . '</h3>
 	<p>' . __( "To use Plugin Register in your plugins ensure you include this code, replacing the [PLACEHOLDER TEXT] with the details of your plugin:", "pluginregister" ) . '</p>
 	
-	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">register_activation_hook( __FILE__, [YOUR UNIQUE PLUGIN SLUG]_plugin_register );
+	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">register_activation_hook( __FILE__, "[YOUR UNIQUE PLUGIN SLUG]_plugin_register" );
 function [YOUR UNIQUE PLUGIN SLUG]_plugin_register() {
 	$plugin = "[YOUR PLUGIN NAME]";
 	$version = "[YOUR PLUGIN VERSION]";

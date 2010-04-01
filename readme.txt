@@ -1,4 +1,4 @@
-=== Pluginto run when the  Register ===
+=== Plugin Register ===
 Contributors: mrwiblog
 Donate link: http://www.stillbreathing.co.uk/donate/
 Tags: plugin, register, activation, count, statistics, developer

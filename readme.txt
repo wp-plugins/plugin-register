@@ -10,6 +10,8 @@ For Wordpress plugin developers: keep a register of when and where your plugins 
 
 == Description ==
 
+Please note: On activation this plugin will send a message to the developer with your site name and URL. This information will be kept private. If you are not happy with the developer knowing you are using their plugin, please do not use it.
+
 If you are a Wordpress plugin developer the chances are your plugins are available for download from the Wordpress plugin repository. As part of that service the nice guys at Wordpress show you how many downloads of your plugin you get per day. Very useful, and if you're like me you check your downloads numbers too often.
 
 However what these stats don't show you is where your plugin is in use - which sites it is actually being activated on. Seeing that would allow you to see exactly which sites are using your plugin, when they installed it, and what version the site is running. That is exactly what Plugin Register does.
@@ -35,6 +37,18 @@ The reports you get include:
 * A list of all sites which have registered any of your plugins
 * Details of what plugins were registered on a particular day
 * A search, so you can see what sites have got version X of plugin Foo_Bar installed
+
+== Privacy ==
+
+Please be aware that this plugin break the privacy that users of Wordpress plugins have traditionally enjoyed. For many users the fact that a plugin developer is aware they are using a particular plugin will not be a problem, but for others it could caue an issue. For example, the website using your plugin may be private - even behind a firewall - or restricted. Informing you as the developer about that site could even break policies or guidelines which are in force on the site.
+
+It is important to ensure that you do everything you can to ensure people are aware of what the use of this Plugin Register code will do. Here is the text I've been using in my plugins:
+
+"Please note: On activation this plugin will send a message to the developer with your site name and URL. This information will be kept private. If you are not happy with the developer knowing you are using their plugin, please do not use it."
+
+Feel free to use that, or write your own. This text should be displayed prominently in the description of your plugin - most importantly BEFORE the user has installed/activated it.
+
+In the future I may make the registration of plugins an optional thing, for example by showing a message on activation that says something like "Thank you for using this plugin. Please click here to register your website with the plugin developer so they know you are using it."
 
 == Installation ==
 

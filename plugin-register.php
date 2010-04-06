@@ -2,20 +2,20 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.1
+ * @version 0.2
  */
 /*
 Plugin Name: Plugin Register
 Plugin URI: http://www.stillbreathing.co.uk/projects/plugin-register/
 Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed. Please note: On activation this plugin will send a message to the developer with your site name and URL. This information will be kept private. If you are not happy with the developer knowing you are using their plugin, please do not use it.
 Author: Chris Taylor
-Version: 0.1
+Version: 0.2
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.1";
+	return "0.2";
 }
 
 // ==========================================================================================
@@ -24,7 +24,7 @@ function pluginregister_current_version() {
 register_activation_hook( __FILE__, pluginregister_plugin_register );
 function pluginregister_plugin_register() {
 	$plugin = "Plugin Register";
-	$version = "0.1";
+	$version = "0.2";
 	$site = get_option( "blogname" );
 	$url = get_option( "siteurl" );
 	$register_url = "http://www.stillbreathing.co.uk/?plugin=" . urlencode( $plugin ) . "&version=" . urlencode( $version ) . "&site=" . urlencode( $site ) . "&url=" . urlencode( $url );
@@ -165,6 +165,10 @@ function pluginregister_main_report() {
 	$plugins = $wpdb->get_results( $sql );
 	
 	if( $plugins && is_array( $plugins ) && count( $plugins ) > 0 ) {
+		
+		$totalsites = $wpdb->get_var("select count(distinct(url)) from " . $wpdb->prefix . "plugin_register;");
+		$totalplugins = $wpdb->get_var("select count(id) from " . $wpdb->prefix . "plugin_register;");
+	
 		echo '
 		<table class="widefat fixed" cellspacing="0">
 
@@ -176,6 +180,15 @@ function pluginregister_main_report() {
 			<th>' . __( "Unique sites", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
+		
+		<tfoot>
+		<tr>
+			<th></th>
+			<th>' . $totalplugins . '</th>
+			<th></th>
+			<th>' . $totalsites . '</th>
+		</tr>
+		</tfoot>
 
 		<tbody>
 		';
@@ -204,12 +217,14 @@ function pluginregister_main_report() {
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
-	// get the unique sites registered
-	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS sitename, url,
-			count(id) as registrations
-			from " . $wpdb->prefix . "plugin_register
-			group by url 
-			order by url
+	// get the unique sites first registered in the last week
+	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS s.sitename, s.url,
+			count(s.id) as registrations,
+			(select min(time) from sb.wp_plugin_register where url = s.url) as firstregistration
+			from " . $wpdb->prefix . "plugin_register s
+			where (select min(time) from " . $wpdb->prefix . "plugin_register where url = s.url) > " . (time()-604800) . "
+			group by s.url 
+			order by s.url
 			limit %d, %d;",
 			$start,
 			$limit );
@@ -240,7 +255,7 @@ function pluginregister_main_report() {
 		));
 	
 		echo '
-		<h3 style="padding-top:2em">' . __( "Registered sites", "pluginregister" ) . '</h3>
+		<h3 style="padding-top:2em">' . __( "New registered sites in the last week", "pluginregister" ) . '</h3>
 		
 		<div class="tablenav">
 		<div class="tablenav-pages">
@@ -254,6 +269,7 @@ function pluginregister_main_report() {
 		<tr class="thead">
 			<th>' . __( "Site name", "pluginregister" ) . '</th>
 			<th>' . __( "URL", "pluginregister" ) . '</th>
+			<th>' . __( "First registration", "pluginregister" ) . '</th>
 			<th>' . __( "Registrations", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
@@ -265,6 +281,7 @@ function pluginregister_main_report() {
 			<tr>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $site->url ) . '">' . $site->sitename . '</a></td>
 				<td><a href="' . $site->url . '">' . $site->url . '</a></td>
+				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>
 				<td>' . $site->registrations . '</td>
 			</tr>
 			';

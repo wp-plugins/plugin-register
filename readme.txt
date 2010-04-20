@@ -14,7 +14,7 @@ If you are a Wordpress plugin developer the chances are your plugins are availab
 
 However what these stats don't show you is where your plugin is in use - which sites it is actually being activated on. Seeing that information would allow you to see exactly which sites are using your plugin, when they installed it, and what version the site is running. That is exactly what Plugin Register does.
 
-By including the Plugin_Register class and calling it with some simple code in your plugin which is registered to be run on activation with the `register_activation_hook()` method, your Plugin Register will be updated with the name and version of your plugin, the site name and URL. A simple call is made to your website to save these details in the Plugin Register table, and you get some great statistics on who is installing your plugins and where.
+By including the Plugin_Register class and calling it with some simple code in your plugin, your Plugin Register database will be updated with the name and version of your plugin, and the site name and URL. A simple call is made to your website to save these details in the Plugin Register table, and you get some great statistics on who is installing your plugins and where.
 
 So, what do you need to put in your plugin? This example code hows you everything you need:
 

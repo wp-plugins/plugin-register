@@ -2,33 +2,20 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.2
+ * @version 0.3
  */
 /*
 Plugin Name: Plugin Register
 Plugin URI: http://www.stillbreathing.co.uk/projects/plugin-register/
-Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed. Please note: On activation this plugin will send a message to the developer with your site name and URL. This information will be kept private. If you are not happy with the developer knowing you are using their plugin, please do not use it.
+Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed.
 Author: Chris Taylor
-Version: 0.2
+Version: 0.3
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.2";
-}
-
-// ==========================================================================================
-// service calling function
-
-register_activation_hook( __FILE__, pluginregister_plugin_register );
-function pluginregister_plugin_register() {
-	$plugin = "Plugin Register";
-	$version = "0.2";
-	$site = get_option( "blogname" );
-	$url = get_option( "siteurl" );
-	$register_url = "http://www.stillbreathing.co.uk/?plugin=" . urlencode( $plugin ) . "&version=" . urlencode( $version ) . "&site=" . urlencode( $site ) . "&url=" . urlencode( $url );
-	wp_remote_fopen( $register_url );
+	return "0.3";
 }
 
 // ==========================================================================================
@@ -41,12 +28,30 @@ register_activation_hook( __FILE__, pluginregister_activate );
 pluginregister_init();
 
 // ==========================================================================================
+// service calling function
+
+require_once( "plugin-register.class.php" );
+
+$register = new Plugin_Register();
+$register->file = __FILE__;
+$register->slug = "pluginregister";
+$register->name = "Plugin Register";
+$register->version = pluginregister_current_version();
+$register->developer = "Chris Taylor";
+$register->homepage = "http://www.stillbreathing.co.uk";
+$register->register_message = 'Hey! Thanks! <a href="%1">Register the plugin here</a>.';
+$register->thanks_message = "That's great, thanks a million.";
+$register->Plugin_Register();
+
+// ==========================================================================================
 // initialisation functions
 
 function pluginregister_init() {
 	if ( function_exists( "add_action" ) ) {
 		add_action( "template_redirect", "pluginregister_service" );
 		add_action( "admin_menu", "pluginregister_admin_menu" );
+		add_action( "admin_head", "pluginregister_admin_head" );
+		add_action( "admin_menu", "pluginregister_download_class" );
 	}
 }
 
@@ -91,6 +96,16 @@ function pluginregister_admin_menu() {
 	
 }
 
+function pluginregister_download_class() {
+	if ( @$_GET["page"] == "pluginregister_reports" && @$_GET["download"] == "class" ) {
+		header( "Content-type:application/octet-stream" );
+		header( "Content-Disposition: attachment; filename=plugin-register.class.php" );
+		$file = file_get_contents( str_replace( ".php", ".class.php", __FILE__ ) );
+		print $file;
+		exit();
+	}
+}
+
 /// show the reports
 function pluginregister_reports() {
 
@@ -99,7 +114,7 @@ function pluginregister_reports() {
 	require_once( "pager.php" );
 
 	echo '
-	<div class="wrap">
+	<div class="wrap" id="pluginregister">
 	<div id="icon-plugins" class="icon32"><br /></div>
 	';
 	
@@ -135,6 +150,24 @@ function pluginregister_reports() {
 
 }
 
+// add the CSS and JavaScript for the reports
+function pluginregister_admin_head()
+{
+	if (isset($_GET["page"]) && $_GET["page"] == "pluginregister_reports")
+	{	
+	echo '
+<style type="text/css">
+#pluginregister td {
+vertical-align: bottom;
+}
+#pluginregister ul.inline li {
+display: inline;
+margin-right: 2em;
+}
+</style>';
+	}
+}
+
 // show the main report
 function pluginregister_main_report() {
 
@@ -148,9 +181,45 @@ function pluginregister_main_report() {
 		' . __( "Plugin version", "pluginregister" ) . ' <input type="text" name="versionq" style="width:6em" />
 		<input type="submit" class="button" value="' . __( "Search plugin register", "pluginregister" ) . '" />
 		<input type="hidden" name="page" value="pluginregister_reports" /></p>
-	</form>
+	</form>';
 	
+	// show date range reports
+	echo '
+	<h3>' . __("Date range reports") . '</h3>
 	
+	<ul class="inline">
+		<li><a href="plugins.php?page=pluginregister_reports#range24hours">' . __("Last 24 hours") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports&amp;range=14days#range14days">' . __("Last 14 days") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12weeks#range12weeks">' . __("Last 12 weeks") . '</a></li>
+	</ul>
+
+	';
+	
+	// show 24 hour report
+	if (!isset($_GET["range"]))
+	{
+		
+		pluginregister_24hour_report();
+		
+	}
+	
+	// show 14 day report
+	if (isset($_GET["range"]) && $_GET["range"] =="14days")
+	{
+		
+		pluginregister_14day_report();
+		
+	}
+	
+	// show 12 week report
+	if (isset($_GET["range"]) && $_GET["range"] =="12weeks")
+	{
+	
+		pluginregister_12week_report();
+		
+	}
+	
+	echo '
 	<h3 style="padding-top:2em">' . __( "Registered plugins", "pluginregister" ) . '</h3>
 	';
 	
@@ -224,7 +293,7 @@ function pluginregister_main_report() {
 			from " . $wpdb->prefix . "plugin_register s
 			where (select min(time) from " . $wpdb->prefix . "plugin_register where url = s.url) > " . (time()-604800) . "
 			group by s.url 
-			order by s.url
+			order by firstregistration desc
 			limit %d, %d;",
 			$start,
 			$limit );
@@ -302,21 +371,271 @@ function pluginregister_main_report() {
 		';
 	}
 	
-	echo '
-	<h3 style="padding-top:2em">' . __( "Using Plugin Register in your plugins", "pluginregister" ) . '</h3>
-	<p>' . __( "To use Plugin Register in your plugins ensure you include this code, replacing the [PLACEHOLDER TEXT] with the details of your plugin:", "pluginregister" ) . '</p>
+	?>
+	<h3 style="padding-top:2em"><?php echo __( "Using Plugin Register in your plugins", "pluginregister" ); ?></h3>
+	<p><?php echo __( 'To use Plugin Register in your plugins you must include the <a href="plugins.php?page=pluginregister_reports&amp;download=class">plugin_register.class.php</a> file, then create a new instance of the Plugin_Register class. The code below gives an example.', 'pluginregister' ); ?></p>
 	
-	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">register_activation_hook( __FILE__, "[YOUR UNIQUE PLUGIN SLUG]_plugin_register" );
-function [YOUR UNIQUE PLUGIN SLUG]_plugin_register() {
-	$plugin = "[YOUR PLUGIN NAME]";
-	$version = "[YOUR PLUGIN VERSION]";
-	$site = get_option( "blogname" );
-	$url = get_option( "siteurl" );
-	$register_url = "' . get_option( "siteurl" ) . '/?plugin=" . urlencode( $plugin ) . "&version=" . urlencode( $version ) . "&site=" . urlencode( $site ) . "&url=" . urlencode( $url );
-	wp_remote_fopen( $register_url );
-}</textarea>
-';
+	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">// include the Plugin_Register class
+require_once( &quot;plugin_register.class.php&quot; ); // leave this as it is
 
+// create a new instance of the Plugin_Register class
+$register->file = __FILE__; // leave this as it is
+$register->slug = &quot;pluginregister&quot;; // create a unique slug for your plugin (normally the plugin name in lowercase, with no spaces or special characters works fine)
+$register->name = &quot;Plugin Register&quot;; // the full name of your plugin (this will be displayed in your statistics)
+$register->version = &quot;1.0&quot;; // the version of your plugin (this will be displayed in your statistics)
+$register->developer = &quot;Chris Taylor&quot;; // your name
+$register->homepage = &quot;http://www.stillbreathing.co.uk&quot;; // your Wordpress website where Plugin Register is installed (no trailing slash)
+
+// the next two lines are optional
+// 'register_plugin' is the message you want to be displayed when someone has activated this plugin. The %1 is replaced by the correct URL to register the plugin (the %1 MUST be the HREF attribute of an &lt;a&gt; element)
+$register->register_message = 'Hey! Thanks! &lt;a href=&quot;%1&quot;&gt;Register the plugin here&lt;/a&gt;.';
+// 'thanks_message' is the message you want to display after someone has registered your plugin
+$register->thanks_message = &quot;That's great, thanks a million.&quot;;
+
+$register->Plugin_Register(); // leave this as it is</textarea>
+
+	<p><?php echo __( "<strong>Important:</strong> If you are using the 'register_activation_hook' function in your plugin please ensure you call the Plugin_Register class AFTER your last 'register_activation_hook' call. If in doubt put your Plugin_Register code at the very end of your plugin file.", "pluginregister" ); ?></p>
+
+<?
+
+}
+
+// show 24 hour report
+function pluginregister_24hour_report($plugin = "", $version = "")
+{
+
+	global $wpdb;
+	
+	$plugin = $wpdb->escape($plugin);
+	$version = $wpdb->escape($version);
+	
+	$begin = time() - (60 * 60 * 23);
+	$start = $begin;
+	
+	for($i = 0; $i < 24; $i++)
+	{
+		$hours[] = $start;
+	
+		$sql = "select count(id) as num
+			from " . $wpdb->prefix . "plugin_register
+			where hour(FROM_UNIXTIME(time)) = hour(FROM_UNIXTIME(" . $start . "))
+			and day(FROM_UNIXTIME(time)) = day(FROM_UNIXTIME(" . $start . "))
+			and month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
+			and 
+			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
+			and
+			('" . $version . "' = '' or plugin = '" . $version . "');";
+
+		$registrationsnum[] = $wpdb->get_var($sql);
+		
+		$start = $start + (60 * 60);			
+	}
+	
+	$registrationsmax = 0;
+	
+	for($i = 0; $i < 24; $i++)
+	{
+		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
+	}
+	
+	echo '
+	<h4 id="range24hours">' . __("Plugin registrations in the last 24 hours" . $desc) . '</h4>
+	<table class="widefat post fixed">
+		<thead>
+		<tr>
+			<th style="width:100px"></th>
+		';
+	for($i = 0; $i < 24; $i++)
+	{
+		echo '
+			<th>' . date("H", $hours[$i]) . '</th>
+		';
+	}
+	echo '
+		</tr>
+		</thead>
+		<tbody>
+		<tr>
+		<th style="width:100px">' . __("Registrations") . '</th>
+		';
+		
+	for($i = 0; $i < 24; $i++)
+	{
+		echo '
+			<td>';
+		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		{
+		echo '
+			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			}
+		echo '
+			' . $registrationsnum[$i] . '</td>
+		';
+	}
+	echo '
+		</tr>
+		</tbody>
+	</table>
+	';
+}
+
+// show 14 day report
+function pluginregister_14day_report($plugin = "", $version = "")
+{
+
+	global $wpdb;
+	
+	$plugin = $wpdb->escape($plugin);
+	$version = $wpdb->escape($version);
+
+	$begin = time() - (60 * 60 * 24 * 13);
+	$start = $begin;
+	
+	for($i = 0; $i < 14; $i++)
+	{
+		$days[] = date("jS M", $start);
+	
+		$sql = "select count(id) as num
+			from " . $wpdb->prefix . "plugin_register
+			where day(FROM_UNIXTIME(time)) = day(FROM_UNIXTIME(" . $start . "))
+			and month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
+			and 
+			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
+			and
+			('" . $version . "' = '' or plugin = '" . $version . "');";
+
+		$registrationsnum[] = $wpdb->get_var($sql);
+		
+		$start = $start + (60 * 60 * 24);			
+	}
+	
+	$registrationsmax = 0;
+	
+	for($i = 0; $i < 14; $i++)
+	{
+		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
+	}
+	
+	echo '
+	<h4 id="range14days">' . __("Plugin registrations in the last 14 days" . $desc) . '</h4>
+	<table class="widefat post fixed">
+		<thead>
+		<tr>
+			<th style="width:100px"></th>
+		';
+	for($i = 0; $i < 14; $i++)
+	{
+		echo '
+			<th>' . $days[$i] . '</th>
+		';
+	}
+	echo '
+		</tr>
+		</thead>
+		<tbody>
+		<tr>
+		<th style="width:100px">' . __("Registrations") . '</th>
+		';
+		
+	for($i = 0; $i < 14; $i++)
+	{
+		echo '
+			<td>';
+		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		{
+		echo '
+			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			}
+		echo '
+			' . $registrationsnum[$i] . '</td>
+		';
+	}
+	echo '
+		</tr>
+		</tbody>
+	</table>
+	';
+}
+
+// show 12 week report
+function pluginregister_12week_report($plugin = "", $version = "")
+{
+
+	global $wpdb;
+	
+	$plugin = $wpdb->escape($plugin);
+	$version = $wpdb->escape($version);
+
+	// show 12 week report
+	$begin = time() - (60 * 60 * 24 * 7 * 11);
+	$start = $begin;
+	
+	for($i = 0; $i < 12; $i++)
+	{
+		$weeks[] = date("jS M", $start);
+	
+		$sql = "select count(id) as num
+			from " . $wpdb->prefix . "plugin_register
+			where week(FROM_UNIXTIME(time)) = week(FROM_UNIXTIME(" . $start . "))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
+			and 
+			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
+			and
+			('" . $version . "' = '' or plugin = '" . $version . "');";
+
+		$registrationsnum[] = $wpdb->get_var($sql);
+		
+		$start = $start + (60 * 60 * 24 * 7);			
+	}
+	
+	$registrationsmax = 0;
+	
+	for($i = 0; $i < 12; $i++)
+	{
+		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
+	}
+	
+	echo '
+	<h4 id="range12weeks">' . __("Plugin registrations in the last 12 weeks" . $desc) . '</h4>
+	<table class="widefat post fixed">
+		<thead>
+		<tr>
+			<th style="width:100px"></th>
+		';
+	for($i = 0; $i < 12; $i++)
+	{
+		echo '
+			<th>' . $weeks[$i] . '</th>
+		';
+	}
+	echo '
+		</tr>
+		</thead>
+		<tbody>
+		<tr>
+		<th style="width:100px">' . __("Registrations") . '</th>
+		';
+		
+	for($i = 0; $i < 12; $i++)
+	{
+		echo '
+			<td>';
+		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		{
+		echo '
+			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			}
+		echo '
+			' . $registrationsnum[$i] . '</td>
+		';
+	}
+	echo '
+		</tr>
+		</tbody>
+	</table>
+	';
 }
 
 // show the plugin report
@@ -483,7 +802,7 @@ function pluginregister_search_report() {
 	global $wpdb;
 	$siteq = @$_GET["siteq"];
 	$pluginq = @$_GET["pluginq"];
-	$versionq = @$_GET["pluginq"];
+	$versionq = @$_GET["versionq"];
 	
 	echo '
 	<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: ' . __( "Search", "pluginregister" ) . '</h2>
@@ -503,17 +822,15 @@ function pluginregister_search_report() {
 	$end = $start + $limit;
 	
 	// search plugin registrations
-	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS plugin, pluginversion as version, sitename, url, time
+	$sql = "select SQL_CALC_FOUND_ROWS plugin, pluginversion as version, sitename, url, time
 			from " . $wpdb->prefix . "plugin_register
 			where ('" . mysql_real_escape_string( $pluginq ) . "' = '' or plugin like '%" . mysql_real_escape_string( $pluginq ) . "%')
-			or ('" . mysql_real_escape_string( $versionq ) . "' = '' or pluginversion like '%" . mysql_real_escape_string( $versionq ) . "%')
-			or ('" . mysql_real_escape_string( $siteq ) . "' = '' or sitename like '%" . mysql_real_escape_string( $siteq ) . "%')
-			or ('" . mysql_real_escape_string( $siteq ) . "' = '' or url like '%" . mysql_real_escape_string( $siteq ) . "%')
+			and ('" . mysql_real_escape_string( $versionq ) . "' = '' or pluginversion like '%" . mysql_real_escape_string( $versionq ) . "%')
+			and ('" . mysql_real_escape_string( $siteq ) . "' = '' or sitename like '%" . mysql_real_escape_string( $siteq ) . "%')
+			and ('" . mysql_real_escape_string( $siteq ) . "' = '' or url like '%" . mysql_real_escape_string( $siteq ) . "%')
 			order by time desc
-			limit %d, %d;",
-			$start,
-			$limit );
-	
+			limit " . mysql_real_escape_string( $start ) . ", " . mysql_real_escape_string( $limit ) . ";";
+
 	// get the results
 	$results = $wpdb->get_results( $sql );
 	

@@ -4,34 +4,35 @@ Donate link: http://www.stillbreathing.co.uk/donate/
 Tags: plugin, register, activation, count, statistics, developer
 Requires at least: 2.8
 Tested up to: 2.9.2
-Stable tag: 0.2
+Stable tag: 0.3
 
 For Wordpress plugin developers: keep a register of when and where your plugins are activated.
 
 == Description ==
 
-Please note: On activation this plugin will send a message to the developer with your site name and URL. This information will be kept private. If you are not happy with the developer knowing you are using their plugin, please do not use it.
-
 If you are a Wordpress plugin developer the chances are your plugins are available for download from the Wordpress plugin repository. As part of that service the nice guys at Wordpress show you how many downloads of your plugin you get per day. Very useful, and if you're like me you check your downloads numbers too often.
 
-However what these stats don't show you is where your plugin is in use - which sites it is actually being activated on. Seeing that would allow you to see exactly which sites are using your plugin, when they installed it, and what version the site is running. That is exactly what Plugin Register does.
+However what these stats don't show you is where your plugin is in use - which sites it is actually being activated on. Seeing that information would allow you to see exactly which sites are using your plugin, when they installed it, and what version the site is running. That is exactly what Plugin Register does.
 
-By including a small function in your plugin which is registered to be run on activation with the `register_activation_hook()` method, your Plugin Register will be updated with the name and version of your plugin, the site name and URL. A simple call is made to your website to save these details in the Plugin Register table, and you get some great statistics on who is installing your plugins and where.
+By including the Plugin_Register class and calling it with some simple code in your plugin which is registered to be run on activation with the `register_activation_hook()` method, your Plugin Register will be updated with the name and version of your plugin, the site name and URL. A simple call is made to your website to save these details in the Plugin Register table, and you get some great statistics on who is installing your plugins and where.
 
-So, what do you need to put in your plugin? This (remember to change the [PLACEHOLDER TEXT]):
+So, what do you need to put in your plugin? This example code hows you everything you need:
 
-`register_activation_hook( __FILE__, "[YOUR UNIQUE PLUGIN SLUG]_plugin_register" );
-function [YOUR UNIQUE PLUGIN SLUG]_plugin_register() {
-	$plugin = "[YOUR PLUGIN NAME]";
-	$version = "[YOUR PLUGIN VERSION]";
-	$site = get_option( "blogname" );
-	$url = get_option( "siteurl" );
-	$register_url = "[YOUR WEBSITE ADDRESS]/?plugin=" . urlencode( $plugin ) . "&version=" . urlencode( $version ) . "&site=" . urlencode( $site ) . "&url=" . urlencode( $url );
-	wp_remote_fopen( $register_url );
-}`
+`// include the Plugin_Register class
+require_once( "plugin-register.class.php" );
+
+// create a new instance of the Plugin_Register class
+$register = new Plugin_Register(); // leave this as it is
+$register->file = __FILE__; // leave this as it is
+$register->slug = "pluginregister"; // create a unique slug for your plugin (normally the plugin name in lowercase, with no spaces or special characters works fine)
+$register->name = "Plugin Register"; // the full name of your plugin (this will be displayed in your statistics)
+$register->version = "1.0"; // the version of your plugin (this will be displayed in your statistics)
+$register->developer = "Chris Taylor"; // your name
+$register->homepage = "http://www.stillbreathing.co.uk"; // your Wordpress website where Plugin Register is installed (no trailing slash)`
 
 The reports you get include:
 
+* Graphs showing how many registrations have been made for the last 24 hours, 14 days and 12 weeks
 * A list of all plugins registered, with how many unique versions and unique sites
 * A list of all version of a particular plugin, with the number of unique sites
 * A list of all sites which have registered any of your plugins
@@ -52,9 +53,8 @@ In the future I may make the registration of plugins an optional thing, for exam
 
 == Installation ==
 
-1. Upload `plugin-name.php` to the `/wp-content/plugins/` directory
-1. Activate the plugin through the 'Plugins' menu in WordPress
-1. Place `<?php do_action('plugin_name_hook'); ?>` in your templates
+1. Install from the Wordpress plugin repository
+2. Activate the plugin through the 'Plugins' menu in WordPress
 
 == Screenshots ==
 
@@ -68,9 +68,13 @@ Although the download stats for the Wordpress repository are great, they don't a
 
 = Is any personally-identifiable information saved? =
 
-No. The only information saved by Plugin Register is the name and version of the plugin, and the name and URL of the Wordpress site it is installed on. I do not intend to ever get any persons personal information using this plugin.
+No. The only information saved by Plugin Register is the name and version of the plugin, and the name and URL of the Wordpress site it is installed on. I do not intend to ever get any persons personal information using this plugin. Registration is also manually-triggered, so no details are stored without the permission of the person who activated the plugin.
 
 == Changelog ==
+
+= 0.3 =
+* Made registration manual
+* Added date range graphs
 
 = 0.2 =
 * Changed main report to show just new sites registered in the last week, and show the total number of registrations and unique sites
@@ -80,8 +84,5 @@ No. The only information saved by Plugin Register is the name and version of the
 
 == Upgrade Notice ==
 
-= 1.0 =
-Upgrade notices describe the reason a user should upgrade.  No more than 300 characters.
-
-= 0.5 =
-This version fixes a security related bug.  Upgrade immediately.
+= 0.3 =
+This version makes the registration process manual, rather than automatic. Several people were unhappy that this plugin automatically gathered information about their sites, so I changed it to be an explicit user action to register a plugin.

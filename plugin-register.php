@@ -2,20 +2,20 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.3
+ * @version 0.4.1
  */
 /*
 Plugin Name: Plugin Register
-Plugin URI: http://www.stillbreathing.co.uk/projects/plugin-register/
+Plugin URI: http://www.stillbreathing.co.uk/wordpress/plugin-register/
 Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed.
 Author: Chris Taylor
-Version: 0.3
+Version: 0.4.1
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.3";
+	return "0.4.1";
 }
 
 // ==========================================================================================

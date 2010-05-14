@@ -4,7 +4,7 @@ Donate link: http://www.stillbreathing.co.uk/donate/
 Tags: plugin, register, activation, count, statistics, developer
 Requires at least: 2.8
 Tested up to: 2.9.2
-Stable tag: 0.3
+Stable tag: 0.4.1
 
 For Wordpress plugin developers: keep a register of when and where your plugins are activated.
 
@@ -71,6 +71,9 @@ Although the download stats for the Wordpress repository are great, they don't a
 No. The only information saved by Plugin Register is the name and version of the plugin, and the name and URL of the Wordpress site it is installed on. I do not intend to ever get any persons personal information using this plugin. Registration is also manually-triggered, so no details are stored without the permission of the person who activated the plugin.
 
 == Changelog ==
+
+= 0.4.1 =
+* Updated plugin URI
 
 = 0.3 =
 * Made registration manual

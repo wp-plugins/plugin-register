@@ -63,16 +63,23 @@ if ( !class_exists( "Plugin_Register" ) ) {
 				$site = get_option( "blogname" );
 				$url = get_option( "siteurl" );
 				$register_url = trim( $this->homepage, "/" ) . "/?plugin=" . urlencode( $this->name ) . "&version=" . urlencode( $this->version ) . "&site=" . urlencode( $site ) . "&url=" . urlencode( $url );
-				wp_remote_fopen( $register_url );
+				$response = wp_remote_get( $register_url );
+				$code = (int) wp_remote_retrieve_response_code( $response );
 				echo '
 				<div id="message" class="updated fade">
 					<p>';
-					if ( $this->thanks_message == "" ) {
-						echo '
-						<strong>Thank you for registering ' . $this->name . '.</strong>
-						';
+					if ( $code == 200 ) {
+						if ( $this->thanks_message == "" ) {
+							echo '
+							<strong>Thank you for registering ' . $this->name . '.</strong>
+							';
+						} else {
+							echo $this->thanks_message;
+						}
 					} else {
-						echo $this->thanks_message;
+						echo '
+						<strong>Sorry, ' . $this->name . ' could not be registered. <a href="plugins.php?paged=' . @$_GET["paged"] . '&amp;' . $this->slug . '=register">Please try again</a>.</strong>
+						';
 					}
 					echo '
 					</p>

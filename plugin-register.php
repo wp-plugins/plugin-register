@@ -2,27 +2,27 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.4.2
+ * @version 0.5
  */
 /*
 Plugin Name: Plugin Register
 Plugin URI: http://www.stillbreathing.co.uk/wordpress/plugin-register/
 Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed.
 Author: Chris Taylor
-Version: 0.4.2
+Version: 0.5
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.4.2";
+	return "0.5";
 }
 
 // ==========================================================================================
 // hooks
 
 // set activation hooks
-register_activation_hook( __FILE__, pluginregister_activate );
+register_activation_hook( __FILE__, "pluginregister_activate" );
 
 // initialise the plugin
 pluginregister_init();
@@ -92,7 +92,7 @@ function pluginregister_create_table() {
 // add the admin menu page
 function pluginregister_admin_menu() {
 
-	add_submenu_page('plugins.php', __( "Plugin Register", "pluginregister" ), __( "Plugin Register", "pluginregister" ), 10, 'pluginregister_reports', 'pluginregister_reports');
+	add_submenu_page('plugins.php', __( "Plugin Register", "pluginregister" ), __( "Plugin Register", "pluginregister" ), 'edit_users', 'pluginregister_reports', 'pluginregister_reports');
 	
 }
 
@@ -117,6 +117,40 @@ function pluginregister_reports() {
 	<div class="wrap" id="pluginregister">
 	<div id="icon-plugins" class="icon32"><br /></div>
 	';
+	
+	if ( isset( $_GET["deletesite"] ) && $_GET["deletesite"] != "" ) {
+		$sql = $wpdb->prepare( "delete from " . $wpdb->prefix . "plugin_register where url = '%s'", urldecode( $_GET["deletesite"] ) );
+		if ( $wpdb->query( $sql ) ) {
+			echo '
+			<div id="message" class="updated fade">
+				<p style="line-height:1.4em">' . __( "The registrations for this site have been deleted", "pluginregister" ) . '</p>
+			</div>
+			';
+		} else {
+			echo '
+			<div id="message" class="error">
+				<p style="line-height:1.4em">' . __( "Sorry, the registrations for this site could not be deleted", "pluginregister" ) . '</p>
+			</div>
+			';
+		}
+	}
+	
+	if ( isset( $_GET["deleteregistration"] ) && $_GET["deleteregistration"] != "" ) {
+		$sql = $wpdb->prepare( "delete from " . $wpdb->prefix . "plugin_register where id = %d", $_GET["deleteregistration"] );
+		if ( $wpdb->query( $sql ) ) {
+			echo '
+			<div id="message" class="updated fade">
+				<p style="line-height:1.4em">' . __( "The plugin registration has been deleted", "pluginregister" ) . '</p>
+			</div>
+			';
+		} else {
+			echo '
+			<div id="message" class="error">
+				<p style="line-height:1.4em">' . __( "Sorry, the plugin registration could not be deleted", "pluginregister" ) . '</p>
+			</div>
+			';
+		}
+	}
 	
 	if ( !isset( $_GET["plugin"] ) && !isset( $_GET["version"] ) && !isset( $_GET["siteq"] ) && !isset( $_GET["pluginq"] ) && !isset( $_GET["versionq"] ) && !isset( $_GET["url"] ) && !isset( $_GET["date"] ) ) {
 	
@@ -340,6 +374,7 @@ function pluginregister_main_report() {
 			<th>' . __( "URL", "pluginregister" ) . '</th>
 			<th>' . __( "First registration", "pluginregister" ) . '</th>
 			<th>' . __( "Registrations", "pluginregister" ) . '</th>
+			<th>' . __( "Delete registrations", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
 
@@ -352,6 +387,7 @@ function pluginregister_main_report() {
 				<td><a href="' . $site->url . '">' . $site->url . '</a></td>
 				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>
 				<td>' . $site->registrations . '</td>
+				<td><a href="plugins.php?page=pluginregister_reports&amp;deletesite=' . urlencode( $site->url ) . '" class="button">' . __( "Delete registrations", "pluginregister" ) . '</a></td>
 			</tr>
 			';
 		}
@@ -440,7 +476,7 @@ function pluginregister_24hour_report($plugin = "", $version = "")
 	}
 	
 	echo '
-	<h4 id="range24hours">' . __("Plugin registrations in the last 24 hours" . $desc) . '</h4>
+	<h4 id="range24hours">' . __("Plugin registrations in the last 24 hours") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
@@ -519,7 +555,7 @@ function pluginregister_14day_report($plugin = "", $version = "")
 	}
 	
 	echo '
-	<h4 id="range14days">' . __("Plugin registrations in the last 14 days" . $desc) . '</h4>
+	<h4 id="range14days">' . __("Plugin registrations in the last 14 days") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
@@ -598,7 +634,7 @@ function pluginregister_12week_report($plugin = "", $version = "")
 	}
 	
 	echo '
-	<h4 id="range12weeks">' . __("Plugin registrations in the last 12 weeks" . $desc) . '</h4>
+	<h4 id="range12weeks">' . __("Plugin registrations in the last 12 weeks") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
@@ -711,7 +747,7 @@ function pluginregister_version_report() {
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
-	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS plugin, pluginversion as version, sitename, url, time
+	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS id, plugin, pluginversion as version, sitename, url, time
 							from " . $wpdb->prefix . "plugin_register
 							where plugin = %s
 							and pluginversion = %s
@@ -764,6 +800,7 @@ function pluginregister_version_report() {
 			<th>' . __( "Version", "pluginregister" ) . '</th>
 			<th>' . __( "Site", "pluginregister" ) . '</th>
 			<th>' . __( "Registration date", "pluginregister" ) . '</th>
+			<th>' . __( "Delete registration", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
 
@@ -776,6 +813,7 @@ function pluginregister_version_report() {
 				<td>' . $result->version . '</td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a></td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;date=' . date( "Y/n/j", $result->time) . '">' . date( "F j, Y, g:i a", $result->time ) . '</a></td>
+				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . $_GET["plugin"] . '&amp;version=' . $_GET["version"] . '&amp;deleteregistration=' . $result->id . '" class="button">' . __( "Delete registration", "pluginregister" ) . '</a></td>
 			</tr>
 			';
 		}
@@ -916,7 +954,7 @@ function pluginregister_url_report() {
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
-	$sql = $wpdb->prepare( "select plugin, pluginversion as version, sitename, url, time
+	$sql = $wpdb->prepare( "select id, plugin, pluginversion as version, sitename, url, time
 							from " . $wpdb->prefix . "plugin_register
 							where url = %s
 							order by time desc
@@ -970,6 +1008,7 @@ function pluginregister_url_report() {
 			<th>' . __( "Plugin", "pluginregister" ) . '</th>
 			<th>' . __( "Version", "pluginregister" ) . '</th>
 			<th>' . __( "Registration date", "pluginregister" ) . '</th>
+			<th>' . __( "Delete registration", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
 
@@ -981,6 +1020,7 @@ function pluginregister_url_report() {
 				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '">' . $result->plugin . '</a></td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '&amp;version=' . urlencode( $result->version ) . '">' . $result->version . '</a></td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;date=' . date( "Y/n/j", $result->time) . '">' . date( "F j, Y, g:i a", $result->time ) . '</a></td>
+				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . $_GET["url"] . '&amp;deleteregistration=' . $result->id . '" class="button">' . __( "Delete registration", "pluginregister" ) . '</a></td>
 			</tr>
 			';
 		}

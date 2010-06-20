@@ -72,6 +72,9 @@ No. The only information saved by Plugin Register is the name and version of the
 
 == Changelog ==
 
+= 0.5 =
+* Added functions to delete registrations for an entire site, or an individual registration, fixed small bugs
+
 = 0.4.2 =
 * Changed register calls to use wp_remote_* functions
 

@@ -4,7 +4,7 @@ Donate link: http://www.stillbreathing.co.uk/donate/
 Tags: plugin, register, activation, count, statistics, developer
 Requires at least: 2.8
 Tested up to: 2.9.2
-Stable tag: 0.4.2
+Stable tag: 0.5.1
 
 For Wordpress plugin developers: keep a register of when and where your plugins are activated.
 
@@ -28,7 +28,8 @@ $register->slug = "pluginregister"; // create a unique slug for your plugin (nor
 $register->name = "Plugin Register"; // the full name of your plugin (this will be displayed in your statistics)
 $register->version = "1.0"; // the version of your plugin (this will be displayed in your statistics)
 $register->developer = "Chris Taylor"; // your name
-$register->homepage = "http://www.stillbreathing.co.uk"; // your Wordpress website where Plugin Register is installed (no trailing slash)`
+$register->homepage = "http://www.stillbreathing.co.uk"; // your Wordpress website where Plugin Register is installed (no trailing slash)
+$register->Plugin_Register(); // set Plugin Register to be called when the plugin is activated
 
 The reports you get include:
 
@@ -71,6 +72,12 @@ Although the download stats for the Wordpress repository are great, they don't a
 No. The only information saved by Plugin Register is the name and version of the plugin, and the name and URL of the Wordpress site it is installed on. I do not intend to ever get any persons personal information using this plugin. Registration is also manually-triggered, so no details are stored without the permission of the person who activated the plugin.
 
 == Changelog ==
+
+= 0.5.1 =
+
+* Added admin dahboard mini report
+* Added list of plugins to new domain registrations report
+* Added 12 month registrations view
 
 = 0.5 =
 * Added functions to delete registrations for an entire site, or an individual registration, fixed small bugs

@@ -2,20 +2,20 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.5
+ * @version 0.5.1
  */
 /*
 Plugin Name: Plugin Register
 Plugin URI: http://www.stillbreathing.co.uk/wordpress/plugin-register/
 Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed.
 Author: Chris Taylor
-Version: 0.5
+Version: 0.5.1
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.5";
+	return "0.5.1";
 }
 
 // ==========================================================================================
@@ -52,6 +52,7 @@ function pluginregister_init() {
 		add_action( "admin_menu", "pluginregister_admin_menu" );
 		add_action( "admin_head", "pluginregister_admin_head" );
 		add_action( "admin_menu", "pluginregister_download_class" );
+		add_action( "wp_dashboard_setup", "pluginregister_dashboard" );
 	}
 }
 
@@ -89,6 +90,16 @@ function pluginregister_create_table() {
 // ==========================================================================================
 // admin functions
 
+function pluginregister_dashboard() {
+	wp_add_dashboard_widget( 'pluginregister_dashboard_report', __( 'Plugin Register', "pluginregister"  ), 'pluginregister_dashboard_report' );
+}
+
+function pluginregister_dashboard_report() {
+	if (current_user_can("edit_users")) {
+		pluginregister_new_urls_report();
+	}
+}
+
 // add the admin menu page
 function pluginregister_admin_menu() {
 
@@ -110,8 +121,6 @@ function pluginregister_download_class() {
 function pluginregister_reports() {
 
 	global $wpdb;
-	
-	require_once( "pager.php" );
 
 	echo '
 	<div class="wrap" id="pluginregister">
@@ -222,9 +231,10 @@ function pluginregister_main_report() {
 	<h3>' . __("Date range reports") . '</h3>
 	
 	<ul class="inline">
-		<li><a href="plugins.php?page=pluginregister_reports#range24hours">' . __("Last 24 hours") . '</a></li>
-		<li><a href="plugins.php?page=pluginregister_reports&amp;range=14days#range14days">' . __("Last 14 days") . '</a></li>
-		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12weeks#range12weeks">' . __("Last 12 weeks") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports#range24hours" class="button">' . __("Last 24 hours") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports&amp;range=14days#range14days" class="button">' . __("Last 14 days") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12weeks#range12weeks" class="button">' . __("Last 12 weeks") . '</a></li>
+		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12months#range12months" class="button">' . __("Last 12 months") . '</a></li>
 	</ul>
 
 	';
@@ -250,6 +260,14 @@ function pluginregister_main_report() {
 	{
 	
 		pluginregister_12week_report();
+		
+	}
+	
+	// show 12 month report
+	if (isset($_GET["range"]) && $_GET["range"] =="12months")
+	{
+	
+		pluginregister_12month_report();
 		
 	}
 	
@@ -315,8 +333,43 @@ function pluginregister_main_report() {
 		';
 	}
 	
+	pluginregister_new_urls_report( 2592000, false );
+	
+	?>
+	<h3 style="padding-top:2em"><?php echo __( "Using Plugin Register in your plugins", "pluginregister" ); ?></h3>
+	<p><?php echo __( 'To use Plugin Register in your plugins you must include the <a href="plugins.php?page=pluginregister_reports&amp;download=class">plugin-register.class.php</a> file, then create a new instance of the Plugin_Register class. The code below gives an example.', 'pluginregister' ); ?></p>
+	
+	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">// include the Plugin_Register class
+require_once( &quot;plugin-register.class.php&quot; ); // leave this as it is
+
+// create a new instance of the Plugin_Register class
+$register->file = __FILE__; // leave this as it is
+$register->slug = &quot;pluginregister&quot;; // create a unique slug for your plugin (normally the plugin name in lowercase, with no spaces or special characters works fine)
+$register->name = &quot;Plugin Register&quot;; // the full name of your plugin (this will be displayed in your statistics)
+$register->version = &quot;1.0&quot;; // the version of your plugin (this will be displayed in your statistics)
+$register->developer = &quot;Chris Taylor&quot;; // your name
+$register->homepage = &quot;http://www.stillbreathing.co.uk&quot;; // your Wordpress website where Plugin Register is installed (no trailing slash)
+
+// the next two lines are optional
+// 'register_plugin' is the message you want to be displayed when someone has activated this plugin. The %1 is replaced by the correct URL to register the plugin (the %1 MUST be the HREF attribute of an &lt;a&gt; element)
+$register->register_message = 'Hey! Thanks! &lt;a href=&quot;%1&quot;&gt;Register the plugin here&lt;/a&gt;.';
+// 'thanks_message' is the message you want to display after someone has registered your plugin
+$register->thanks_message = &quot;That's great, thanks a million.&quot;;
+
+$register->Plugin_Register(); // leave this as it is</textarea>
+
+	<p><?php echo __( "<strong>Important:</strong> If you are using the 'register_activation_hook' function in your plugin please ensure you call the Plugin_Register class AFTER your last 'register_activation_hook' call. If in doubt put your Plugin_Register code at the very end of your plugin file.", "pluginregister" ); ?></p>
+
+<?
+
+}
+
+function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
+	global $wpdb;
+
 	// set up pagination start
-	$limit = 25;
+	$limit = 10;
+	if ( !$mini ) $limit = 25;
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
@@ -325,7 +378,7 @@ function pluginregister_main_report() {
 			count(s.id) as registrations,
 			(select min(time) from sb.wp_plugin_register where url = s.url) as firstregistration
 			from " . $wpdb->prefix . "plugin_register s
-			where (select min(time) from " . $wpdb->prefix . "plugin_register where url = s.url) > " . (time()-604800) . "
+			where (select min(time) from " . $wpdb->prefix . "plugin_register where url = s.url) > " . (time()-$seconds) . "
 			group by s.url 
 			order by firstregistration desc
 			limit %d, %d;",
@@ -357,9 +410,19 @@ function pluginregister_main_report() {
 			'current' => $_GET['paged']
 		));
 	
+		$days = $seconds / 60 / 60 / 24;
+	
+		if ( !$mini ) {
 		echo '
-		<h3 style="padding-top:2em">' . __( "New registered sites in the last week", "pluginregister" ) . '</h3>
+		<h3 style="padding-top:2em">' . sprintf( __( "New registered sites in the last %d days", "pluginregister" ), $days ) . '</h3>
+		';
+		} else {
+		echo '
+		<p>' . sprintf( __( 'New registered sites in the last %d days. <a href="plugins.php?page=pluginregister_reports">View full reports</a>.', "pluginregister" ), $days ) . '</p>
+		';
+		}
 		
+		echo '
 		<div class="tablenav">
 		<div class="tablenav-pages">
 		<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
@@ -373,21 +436,53 @@ function pluginregister_main_report() {
 			<th>' . __( "Site name", "pluginregister" ) . '</th>
 			<th>' . __( "URL", "pluginregister" ) . '</th>
 			<th>' . __( "First registration", "pluginregister" ) . '</th>
-			<th>' . __( "Registrations", "pluginregister" ) . '</th>
-			<th>' . __( "Delete registrations", "pluginregister" ) . '</th>
+			';
+			if ( !$mini ) {
+			echo '<th>' . __( "Registrations", "pluginregister" ) . '</th>
+			<th>' . __( "Delete registrations", "pluginregister" ) . '</th>';
+			}
+			echo '
 		</tr>
 		</thead>
 
 		<tbody>
 		';
 		foreach ( $sites as $site ) {
+			
+			$sql = $wpdb->prepare( "select distinct(plugin)
+							from " . $wpdb->prefix . "plugin_register
+							where url = %s;",
+							$site->url );
+			$plugins = $wpdb->get_results( $sql );
+		
 			echo '
 			<tr>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $site->url ) . '">' . $site->sitename . '</a></td>
 				<td><a href="' . $site->url . '">' . $site->url . '</a></td>
-				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>
+				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>';
+				if ( !$mini ) {
+				echo '
 				<td>' . $site->registrations . '</td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;deletesite=' . urlencode( $site->url ) . '" class="button">' . __( "Delete registrations", "pluginregister" ) . '</a></td>
+				';
+				}
+				echo '
+			</tr>
+			<tr>
+				';
+				if ( !$mini ) {
+				echo '<td colspan="5"><span style="font-style: italic">';
+				} else {
+				echo '<td colspan="3"><span style="font-style: italic">';
+				}
+				if ( is_array( $plugins ) && count( $plugins ) > 0) {
+					$list = "";
+					foreach( $plugins as $plugin ) {
+						$list .= $plugin->plugin . ", ";
+					}
+					echo trim( trim( $list ), "," );
+				}
+				echo '</span></td>
 			</tr>
 			';
 		}
@@ -406,34 +501,6 @@ function pluginregister_main_report() {
 		<p>' . __( "No sites found", "pluginregister" ) . '</p>
 		';
 	}
-	
-	?>
-	<h3 style="padding-top:2em"><?php echo __( "Using Plugin Register in your plugins", "pluginregister" ); ?></h3>
-	<p><?php echo __( 'To use Plugin Register in your plugins you must include the <a href="plugins.php?page=pluginregister_reports&amp;download=class">plugin_register.class.php</a> file, then create a new instance of the Plugin_Register class. The code below gives an example.', 'pluginregister' ); ?></p>
-	
-	<textarea rows="11" cols="50" style="width:95%;font-family:monospace">// include the Plugin_Register class
-require_once( &quot;plugin_register.class.php&quot; ); // leave this as it is
-
-// create a new instance of the Plugin_Register class
-$register->file = __FILE__; // leave this as it is
-$register->slug = &quot;pluginregister&quot;; // create a unique slug for your plugin (normally the plugin name in lowercase, with no spaces or special characters works fine)
-$register->name = &quot;Plugin Register&quot;; // the full name of your plugin (this will be displayed in your statistics)
-$register->version = &quot;1.0&quot;; // the version of your plugin (this will be displayed in your statistics)
-$register->developer = &quot;Chris Taylor&quot;; // your name
-$register->homepage = &quot;http://www.stillbreathing.co.uk&quot;; // your Wordpress website where Plugin Register is installed (no trailing slash)
-
-// the next two lines are optional
-// 'register_plugin' is the message you want to be displayed when someone has activated this plugin. The %1 is replaced by the correct URL to register the plugin (the %1 MUST be the HREF attribute of an &lt;a&gt; element)
-$register->register_message = 'Hey! Thanks! &lt;a href=&quot;%1&quot;&gt;Register the plugin here&lt;/a&gt;.';
-// 'thanks_message' is the message you want to display after someone has registered your plugin
-$register->thanks_message = &quot;That's great, thanks a million.&quot;;
-
-$register->Plugin_Register(); // leave this as it is</textarea>
-
-	<p><?php echo __( "<strong>Important:</strong> If you are using the 'register_activation_hook' function in your plugin please ensure you call the Plugin_Register class AFTER your last 'register_activation_hook' call. If in doubt put your Plugin_Register code at the very end of your plugin file.", "pluginregister" ); ?></p>
-
-<?
-
 }
 
 // show 24 hour report
@@ -672,6 +739,114 @@ function pluginregister_12week_report($plugin = "", $version = "")
 		</tbody>
 	</table>
 	';
+}
+
+// show 12 month report
+function pluginregister_12month_report($plugin = "", $version = "")
+{
+
+	global $wpdb;
+	
+	$plugin = $wpdb->escape($plugin);
+	$version = $wpdb->escape($version);
+
+	// show 12 week report
+	$begin = pluginregister_addMonthToDate( pluginregister_addYearToDate( time(), -1 ), 1);
+	$start = $begin;
+	
+	for($i = 0; $i < 12; $i++)
+	{
+		$months[] = date("M y", $start);
+	
+		$sql = "select count(id) as num
+			from " . $wpdb->prefix . "plugin_register
+			where month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
+			and 
+			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
+			and
+			('" . $version . "' = '' or plugin = '" . $version . "');";
+
+		$registrationsnum[] = $wpdb->get_var($sql);
+		
+		$start = pluginregister_addMonthToDate( $start, 1 );
+	}
+	
+	$registrationsmax = 0;
+	
+	for($i = 0; $i < 12; $i++)
+	{
+		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
+	}
+	
+	echo '
+	<h4 id="range12months">' . __("Plugin registrations in the last 12 months") . '</h4>
+	<table class="widefat post fixed">
+		<thead>
+		<tr>
+			<th style="width:100px"></th>
+		';
+	for($i = 0; $i < 12; $i++)
+	{
+		echo '
+			<th>' . $months[$i] . '</th>
+		';
+	}
+	echo '
+		</tr>
+		</thead>
+		<tbody>
+		<tr>
+		<th style="width:100px">' . __("Registrations") . '</th>
+		';
+		
+	for($i = 0; $i < 12; $i++)
+	{
+		echo '
+			<td>';
+		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		{
+		echo '
+			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			}
+		echo '
+			' . $registrationsnum[$i] . '</td>
+		';
+	}
+	echo '
+		</tr>
+		</tbody>
+	</table>
+	';
+}
+
+// from user contributed notes at http://www.php.net/manual/en/function.mktime.php
+function pluginregister_addYearToDate( $timeStamp, $totalYears=1 ){
+	$thePHPDate = getdate( $timeStamp );
+	$thePHPDate['year'] = $thePHPDate['year']+$totalYears;
+	$timeStamp = mktime( $thePHPDate['hours'], $thePHPDate['minutes'], $thePHPDate['seconds'], $thePHPDate['mon'], $thePHPDate['mday'], $thePHPDate['year'] );
+	return $timeStamp;
+}
+function pluginregister_addMonthToDate( $timeStamp, $totalMonths=1 ){
+	// You can add as many months as you want. mktime will accumulate to the next year.
+	$thePHPDate = getdate( $timeStamp ); // Covert to Array    
+	$thePHPDate['mon'] = $thePHPDate['mon']+$totalMonths; // Add to Month    
+	$timeStamp = mktime( $thePHPDate['hours'], $thePHPDate['minutes'], $thePHPDate['seconds'], $thePHPDate['mon'], $thePHPDate['mday'], $thePHPDate['year'] ); // Convert back to timestamp
+	return $timeStamp;
+}
+function pluginregister_addDayToDate( $timeStamp, $totalDays=1 ){
+	// You can add as many days as you want. mktime will accumulate to the next month / year.
+	$thePHPDate = getdate( $timeStamp );
+	$thePHPDate['mday'] = $thePHPDate['mday']+$totalDays;
+	$timeStamp = mktime( $thePHPDate['hours'], $thePHPDate['minutes'], $thePHPDate['seconds'], $thePHPDate['mon'], $thePHPDate['mday'], $thePHPDate['year'] );
+	return $timeStamp;
+}
+function pluginregister_addHourToDate( $timeStamp, $totalHours=1 ){
+	// You can add as many days as you want. mktime will accumulate to the next month / year.
+	$thePHPDate = getdate( $timeStamp );
+	$thePHPDate['mhour'] = $thePHPDate['mhour']+$totalHours;
+	$timeStamp = mktime( $thePHPDate['mhour'], $thePHPDate['minutes'], $thePHPDate['seconds'], $thePHPDate['mon'], $thePHPDate['day'], $thePHPDate['year'] );
+	return $timeStamp;
 }
 
 // show the plugin report
@@ -1145,6 +1320,96 @@ function pluginregister_date_report() {
 		';
 	}
 
+}
+
+// pagngation functions
+// Originally from http://www.onextrapixel.com/2009/06/22/how-to-add-pagination-into-list-of-records-or-wordpress-plugin/
+if ( !function_exists( "findStart" ) ) {
+	function findStart($limit) {
+		if ((!isset($_GET['paged'])) || ($_GET['paged'] == "1")) {
+	    	$start = 0;
+	    	$_GET['paged'] = 1;
+	    } else {
+	       	$start = ($_GET['paged']-1) * $limit;
+	    }
+		return $start;
+	}
+
+	  /*
+	   * int findPages (int count, int limit)
+	   * Returns the number of pages needed based on a count and a limit
+	   */
+	function findPages($count, $limit) {
+	     $pages = (($count % $limit) == 0) ? $count / $limit : floor($count / $limit) + 1; 
+
+	     return $pages;
+	} 
+
+	/*
+	* string pageList (int curpage, int pages)
+	* Returns a list of pages in the format of "« < [pages] > »"
+	**/
+	function pageList($curpage, $pages, $count, $limit)
+	{
+		$qs = preg_replace("&p=([0-9]+)", "", $_SERVER['QUERY_STRING']);
+		$start = findStart($limit);
+		$end = $start + $limit;
+		$page_list  = "<span class=\"displaying-num\">Displaying " . ( $start + 1 ). "&#8211;" . $end . " of " . $count . "</span>\n"; 
+
+	    /* Print the first and previous page links if necessary */
+	    if (($curpage != 1) && ($curpage)) {
+	       $page_list .= "<a href=\"".$_SERVER['PHP_SELF']."?".$qs."&amp;p=1\" class=\"page-numbers\">&laquo;</a>\n";
+	    } 
+
+	    if (($curpage-1) > 0) {
+	       $page_list .= "<a href=\"".$_SERVER['PHP_SELF']."?".$qs."&amp;p=".($curpage-1)."\" class=\"page-numbers\">&lt;</a>\n";
+	    } 
+
+	    /* Print the numeric page list; make the current page unlinked and bold */
+	    for ($i=1; $i<=$pages; $i++) {
+	    	if ($i == $curpage) {
+	         	$page_list .= "<span class=\"page-numbers current\">".$i."</span>";
+	        } else {
+	         	$page_list .= "<a href=\"".$_SERVER['PHP_SELF']."?".$qs."&amp;p=".$i."\" class=\"page-numbers\">".$i."</a>\n";
+	        }
+	       	$page_list .= " ";
+	      } 
+
+	     /* Print the Next and Last page links if necessary */
+	     if (($curpage+1) <= $pages) {
+	       	$page_list .= "<a href=\"".$_SERVER['PHP_SELF']."?".$qs."&amp;p=".($curpage+1)."\" class=\"page-numbers\">&gt;</a>\n";
+	     } 
+
+	     if (($curpage != $pages) && ($pages != 0)) {
+	       	$page_list .= "<a href=\"".$_SERVER['PHP_SELF']."?".$qs."&amp;p=".$pages."\" class=\"page-numbers\">&raquo;</a>\n";
+	     }
+	     $page_list .= "\n"; 
+
+	     return $page_list;
+	}
+
+	/*
+	* string nextPrev (int curpage, int pages)
+	* Returns "Previous | Next" string for individual pagination (it's a word!)
+	*/
+	function nextPrev($curpage, $pages) {
+	 $next_prev  = ""; 
+
+		if (($curpage-1) <= 0) {
+	   		$next_prev .= "Previous";
+		} else {
+	   		$next_prev .= "<a href=\"".$_SERVER['PHP_SELF']."?".$_SERVER['QUERY_STRING']."&amp;p=".($curpage-1)."\" class='page-numbers'>Previous</a>";
+		} 
+
+	 		$next_prev .= " | "; 
+
+	 	if (($curpage+1) > $pages) {
+	   		$next_prev .= "Next";
+	    } else {
+	       	$next_prev .= "<a href=\"".$_SERVER['PHP_SELF']."?".$_SERVER['QUERY_STRING']."&amp;p=".($curpage+1)."\" class='page-numbers'>Next</a>";
+	    }
+		return $next_prev;
+	}
 }
 
 // ==========================================================================================

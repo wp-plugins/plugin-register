@@ -2,20 +2,20 @@
 /**
  * @package Plugin Register
  * @author Chris Taylor
- * @version 0.5.1
+ * @version 0.6
  */
 /*
 Plugin Name: Plugin Register
 Plugin URI: http://www.stillbreathing.co.uk/wordpress/plugin-register/
 Description: This is a plugin for plugin developers only. Plugin Register allows you to keep track of what version of your plugins are being installed. By registering a function to be run on activation of your plugin, a call is made to this plugin which stores details the site which is installing your plugin, which plugin is being installed, and the plugin version. Some reports are available so you can see what versions are installed.
 Author: Chris Taylor
-Version: 0.5.1
+Version: 0.6
 Author URI: http://www.stillbreathing.co.uk/
 */
 
 // set the current version
 function pluginregister_current_version() {
-	return "0.5.1";
+	return "0.6";
 }
 
 // ==========================================================================================
@@ -53,6 +53,8 @@ function pluginregister_init() {
 		add_action( "admin_head", "pluginregister_admin_head" );
 		add_action( "admin_menu", "pluginregister_download_class" );
 		add_action( "wp_dashboard_setup", "pluginregister_dashboard" );
+		add_filter( "cron_schedules", "pluginregister_cron_add_weekly" );
+		pluginregister_initialise_notifications();
 	}
 }
 
@@ -96,7 +98,120 @@ function pluginregister_dashboard() {
 
 function pluginregister_dashboard_report() {
 	if (current_user_can("edit_users")) {
-		pluginregister_new_urls_report();
+		$seconds = 604800;
+		global $wpdb;
+
+		// set up pagination start
+		$limit = 10;
+		$start = findStart( $limit );
+		$end = $start + $limit;
+		
+		// get the unique sites first registered in the last week
+		$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS s.sitename, s.url,
+				count(s.id) as registrations,
+				(select min(time) from sb.wp_plugin_register where url = s.url) as firstregistration
+				from " . $wpdb->prefix . "plugin_register s
+				where (select min(time) from " . $wpdb->prefix . "plugin_register where url = s.url) > " . (time()-$seconds) . "
+				group by s.url 
+				order by firstregistration desc
+				limit %d, %d;",
+				$start,
+				$limit );
+		$sites = $wpdb->get_results( $sql );
+		
+		if( $sites && is_array( $sites ) && count( $sites ) > 0 ) {
+		
+			// get the total number of rows
+			$count = $wpdb->get_var( "SELECT FOUND_ROWS();" );
+			
+			if ( $count < $limit ) {
+				$view = $count;
+			} else {
+				$view = ( $start+1 ) . '&ndash;' . $end;
+			}
+
+			// get the pages
+			$pages = findPages($count, $limit);
+			
+			// set up the pagination links
+			$pagelist = paginate_links( array(
+				'base' => add_query_arg( 'paged', '%#%' ),
+				'format' => '',
+				'prev_text' => __('&laquo;'),
+				'next_text' => __('&raquo;'),
+				'total' => $pages,
+				'current' => $_GET['paged']
+			));
+		
+			$days = $seconds / 60 / 60 / 24;
+		
+			echo '
+			<p>' . sprintf( __( 'New registered sites in the last %d days. <a href="plugins.php?page=pluginregister_reports">View full reports</a>.', "pluginregister" ), $days ) . '</p>
+			<div class="tablenav">
+			<div class="tablenav-pages">
+			<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
+				' . $pagelist . '
+			</div>
+			</div>
+			<table class="widefat fixed" cellspacing="0">
+
+			<thead>
+			<tr class="thead">
+				<th>' . __( "Site name", "pluginregister" ) . '</th>
+				<th>' . __( "URL", "pluginregister" ) . '</th>
+			</tr>
+			</thead>
+
+			<tbody>
+			';
+			foreach ( $sites as $site ) {
+				
+				$sql = $wpdb->prepare( "select distinct(plugin)
+								from " . $wpdb->prefix . "plugin_register
+								where url = %s;",
+								$site->url );
+				$plugins = $wpdb->get_results( $sql );
+			
+				echo '
+				<tr>
+					<td>
+						<a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $site->url ) . '">';
+						if ( $site->sitename == "" ) {
+							echo __( "(no name)", "pluginregister" );
+						} else {
+							echo $site->sitename;
+						}
+				echo '
+						</a></td>
+					<td><a href="' . $site->url . '">' . $site->url . '</a></td>
+				</tr>
+				<tr>
+					<td colspan="2"><span style="font-style: italic">';
+					if ( is_array( $plugins ) && count( $plugins ) > 0) {
+						$list = "";
+						foreach( $plugins as $plugin ) {
+							$list .= $plugin->plugin . ", ";
+						}
+						echo trim( trim( $list ), "," );
+					}
+					echo '</span></td>
+				</tr>';
+				}
+			echo '
+			</tbody>
+			</table>
+			<div class="tablenav">
+			<div class="tablenav-pages">
+			<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
+				' . $pagelist . '
+			</div>
+			</div>
+			';
+		} else {
+			echo '
+			<p>' . __( "No sites found", "pluginregister" ) . '</p>
+			';
+		}
 	}
 }
 
@@ -161,10 +276,23 @@ function pluginregister_reports() {
 		}
 	}
 	
-	if ( !isset( $_GET["plugin"] ) && !isset( $_GET["version"] ) && !isset( $_GET["siteq"] ) && !isset( $_GET["pluginq"] ) && !isset( $_GET["versionq"] ) && !isset( $_GET["url"] ) && !isset( $_GET["date"] ) ) {
+	if ( !isset( $_GET["plugin"] ) && !isset( $_GET["version"] ) && !isset( $_GET["siteq"] ) && !isset( $_GET["pluginq"] ) && !isset( $_GET["versionq"] ) && !isset( $_GET["url"] ) && !isset( $_GET["date"] ) && !isset( $_GET["screen"] ) && !isset( $_GET["list"] ) ) {
 	
 		pluginregister_main_report();
 
+	} else if ( isset( $_GET["screen"] ) ) {
+		
+		if ( $_GET["screen"] == "settings" ){
+			
+			if ( isset( $_GET["testemail"] ) ) {
+				$data = pluginregister_get_settings();
+				pluginregister_send_notification_emails( $data["schedule"] );
+			}
+			
+			pluginregister_settings_screen();
+			
+		}
+		
 	} else if ( isset( $_GET["plugin"] ) && !isset( $_GET["version"] ) ) {
 	
 		pluginregister_plugin_report();
@@ -185,6 +313,14 @@ function pluginregister_reports() {
 	
 		pluginregister_date_report();
 	
+	} else if ( isset( $_GET["list"] ) ) {
+	
+		if ( $_GET["list"] == "sites" ) {
+	
+			pluginregister_sites_report();
+		
+		}
+		
 	}
 	
 	echo '	
@@ -196,80 +332,166 @@ function pluginregister_reports() {
 // add the CSS and JavaScript for the reports
 function pluginregister_admin_head()
 {
-	if (isset($_GET["page"]) && $_GET["page"] == "pluginregister_reports")
-	{	
 	echo '
-<style type="text/css">
-#pluginregister td {
-vertical-align: bottom;
+	<link rel="stylesheet" href="' . plugins_url( 'plugin-register.css' , __FILE__ ) . '" type="text/css" media="all" />
+	<script type="text/javascript" src="' . plugins_url( 'plugin-register.js' , __FILE__ ) . '"></script>
+	';
 }
-#pluginregister ul.inline li {
-display: inline;
-margin-right: 2em;
+ 
+function pluginregister_cron_add_weekly( $schedules ) {
+	// Adds once weekly to the existing schedules.
+	$schedules['weekly'] = array(
+		'interval' => 604800,
+		'display' => __( 'Once Weekly' )
+	);
+	return $schedules;
 }
-</style>';
+
+// get the settings
+function pluginregister_get_settings() {
+
+	// set defaults
+	$data = array(
+		"enabled" => true,
+		"schedule" => "daily"
+	);
+	
+	// get the settings
+	return maybe_unserialize( get_option( "pluginregister_settings", maybe_serialize( $data ) ) );
+	
+}
+
+// initialise the notifications
+function pluginregister_initialise_notifications() {
+
+	// get settings
+	$data = pluginregister_get_settings();
+	
+	// if enabled
+	if ( $data["enabled"] ) {
+	
+		// schedule the next job
+		if ( ! wp_next_scheduled( 'pluginregister_notify' ) ) {
+			wp_schedule_event( time(), $data["schedule"], 'pluginregister_send_notification_emails', $data["schedule"] );
+		}
+		
+	// not enabled
+	} else {
+	
+		// cancel the next job
+		$timestamp = wp_next_scheduled( 'pluginregister_notify' );
+		wp_unschedule_event( $timestamp, 'pluginregister_notify', $data["schedule"] );
+		
 	}
+}
+
+// send the notification emails
+function pluginregister_send_notification_emails( $schedule ) {
+
+	$data = pluginregister_get_settings();
+	
+	$siteurl = get_admin_url();
+	
+	global $wpdb;
+
+	$days = -1;
+	if ( $schedule == "weekly" ) {
+		$days = -7;
+	}
+	
+	$start = pluginregister_addDayToDate( time(), $days );
+	
+	$sql = "select plugin, pluginversion as version, sitename, url, time
+		from " . $wpdb->prefix . "plugin_register
+		where time >= " . $start . "
+		order by time;";
+	
+	// get the results
+	$results = $wpdb->get_results( $sql );
+	
+	$html = '';
+	
+	if( $results && is_array( $results ) && count( $results ) > 0 ) {
+	
+		$html .= '
+		<p>' . __( "Plugins registered:", "pluginregister" ) . ' ' . count( $results ) . '</p>
+
+		<table>
+
+		<thead>
+		<tr>
+			<th>' . __( "Plugin", "pluginregister" ) . '</th>
+			<th>' . __( "Version", "pluginregister" ) . '</th>
+			<th>' . __( "Site", "pluginregister" ) . '</th>
+			<th>' . __( "URL", "pluginregister" ) . '</th>
+			<th>' . __( "Registration date", "pluginregister" ) . '</th>
+		</tr>
+		</thead>
+
+		<tbody>
+		';
+		foreach ( $results as $result ) {
+			$html .= '
+			<tr>
+				<td><a href="' . $siteurl . 'plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '">' . $result->plugin . '</a></td>
+				<td><a href="' . $siteurl . 'plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '&amp;version=' . urlencode( $result->version ) . '">' . $result->version . '</a></td>
+				<td><a href="' . $siteurl . 'plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a></td>
+				<td><a href="' . $result->url . '">' . $result->url . '</a></td>
+				<td><a href="' . $siteurl . 'plugins.php?page=pluginregister_reports&amp;date=' . date( "Y/n/j", $result->time) . '">' . date( "F j, Y, g:i a", $result->time ) . '</a></td>
+			</tr>
+			';
+		}
+		$html .= '
+		</tbody>
+		</table>
+		';
+	} else {
+		$html .= '
+		<p>' . __( "No registrations found in this period", "pluginregister" ) . '</p>
+		';
+	}
+	
+	add_filter( 'wp_mail_content_type', create_function( '', 'return "text/html";' ) );
+	wp_mail( get_settings('admin_email'), __( "Plugin Register Registrations", "pluginregister" ), $html );
 }
 
 // show the main report
 function pluginregister_main_report() {
 
+	// the email feature isn't working properly
+	// <a href="plugins.php?page=pluginregister_reports&amp;screen=settings" class="button">' . __( "Email alerts", "pluginregister" ) . '</a>
+
 	global $wpdb;
 	echo '
-	<h2>' . __( "Plugin Register", "pluginregister" ) . '</h2>
+	<h2>
+		' . __( "Plugin Register", "pluginregister" ) . '
+	</h2>
 	
 	<form action="plugins.php" method="get">
-		<p>' . __( "Site name/url", "pluginregister" ) . ' <input type="text" name="siteq" />
+		<p>
+		' . __( "Site name/url", "pluginregister" ) . ' <input type="text" name="siteq" />
 		' . __( "Plugin name", "pluginregister" ) . ' <input type="text" name="pluginq" />
 		' . __( "Plugin version", "pluginregister" ) . ' <input type="text" name="versionq" style="width:6em" />
 		<input type="submit" class="button" value="' . __( "Search plugin register", "pluginregister" ) . '" />
-		<input type="hidden" name="page" value="pluginregister_reports" /></p>
+		<input type="hidden" name="page" value="pluginregister_reports" />
+		<a href="plugins.php?page=pluginregister_reports&amp;list=sites" class="button">' . __( "Sites list", "pluginregister" ) . '</a>
+		</p>
 	</form>';
 	
 	// show date range reports
 	echo '
 	<h3>' . __("Date range reports") . '</h3>
-	
 	<ul class="inline">
-		<li><a href="plugins.php?page=pluginregister_reports#range24hours" class="button">' . __("Last 24 hours") . '</a></li>
-		<li><a href="plugins.php?page=pluginregister_reports&amp;range=14days#range14days" class="button">' . __("Last 14 days") . '</a></li>
-		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12weeks#range12weeks" class="button">' . __("Last 12 weeks") . '</a></li>
-		<li><a href="plugins.php?page=pluginregister_reports&amp;range=12months#range12months" class="button">' . __("Last 12 months") . '</a></li>
+		<li><a href="#range24hours" class="button rangebutton">' . __("Last 24 hours") . '</a></li>
+		<li><a href="#range14days" class="button rangebutton">' . __("Last 14 days") . '</a></li>
+		<li><a href="#range12weeks" class="button rangebutton">' . __("Last 12 weeks") . '</a></li>
+		<li><a href="#range12months" class="button rangebutton">' . __("Last 12 months") . '</a></li>
 	</ul>
-
 	';
-	
-	// show 24 hour report
-	if (!isset($_GET["range"]))
-	{
-		
-		pluginregister_24hour_report();
-		
-	}
-	
-	// show 14 day report
-	if (isset($_GET["range"]) && $_GET["range"] =="14days")
-	{
-		
-		pluginregister_14day_report();
-		
-	}
-	
-	// show 12 week report
-	if (isset($_GET["range"]) && $_GET["range"] =="12weeks")
-	{
-	
-		pluginregister_12week_report();
-		
-	}
-	
-	// show 12 month report
-	if (isset($_GET["range"]) && $_GET["range"] =="12months")
-	{
-	
-		pluginregister_12month_report();
-		
-	}
+	pluginregister_24hour_report();
+	pluginregister_14day_report();
+	pluginregister_12week_report();
+	pluginregister_12month_report();
 	
 	echo '
 	<h3 style="padding-top:2em">' . __( "Registered plugins", "pluginregister" ) . '</h3>
@@ -333,7 +555,7 @@ function pluginregister_main_report() {
 		';
 	}
 	
-	pluginregister_new_urls_report( 2592000, false );
+	pluginregister_new_urls_report( 2592000 );
 	
 	?>
 	<h3 style="padding-top:2em"><?php echo __( "Using Plugin Register in your plugins", "pluginregister" ); ?></h3>
@@ -364,12 +586,72 @@ $register->Plugin_Register(); // leave this as it is</textarea>
 
 }
 
-function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
+function pluginregister_settings_screen() {
+
+	$data = pluginregister_get_settings();
+	
+	// save the settings
+	if ( count( $_POST ) > 0 ) {
+		if ( isset( $_POST["cron"] ) && $_POST["cron"] == "1" ) {
+			$data["enabled"] = true;
+		} else {
+			$data["enabled"] = false;
+		}
+		if ( isset( $_POST["schedule"] ) ) {
+			$data["schedule"] = $_POST["schedule"];
+		}
+		update_option( "pluginregister_settings", maybe_serialize( $data ) );
+		
+		echo '
+		<div id="message" class="updated fade">
+			<p><strong>' . __( 'The settings have been saved. <a href="plugins.php?page=pluginregister_reports&amp;screen=settings&amp;testemail=true">Test notification email</a> (will be sent to the site admin email address).', "pluginregister" ) . '</strong></p>
+		</div>
+		';
+	}
+
+	echo '
+	<h2>
+		' . __( "Plugin Register Settings", "pluginregister" ) . '
+		<a href="plugins.php?page=pluginregister_reports" class="button">' . __( "Main report", "pluginregister" ) . '</a>
+	</h2>
+	
+	<form action="plugins.php?page=pluginregister_reports&amp;screen=settings" method="post">
+	
+		<table class="form-table"><tbody>
+			<tr valign="top">
+				<th scope="row">
+					<label for="cron">' . __( "Enable registration emails", "pluginregister" ) . '</label>
+				</th>
+				<td>
+					<input name="cron" type="checkbox" id="cron" value="1"' . ( $data["enabled"] ? ' checked="checked"' : "" ) . '>
+				</td>
+			</tr>
+			<tr valign="top">
+				<th scope="row">
+					<label for="schedule">' . __( "Email schedule", "pluginregister" ) . '</label>
+				</th>
+				<td>
+					<select name="schedule" id="schedule">
+						<option value="daily"' . ( $data["schedule"] == "daily" ? ' selected="selected"' : '' ) . '>' . __( "Daily", "pluginregister" ) . '</option>
+						<option value="weekly"' . ( $data["schedule"] == "weekly" ? ' selected="selected"' : '' ) . '>' . __( "Weekly", "pluginregister" ) . '</option>
+					</select>
+				</td>
+			</tr>
+		</tbody></table>
+		
+		<p class="submit">
+			<input type="submit" name="submit" id="submit" class="button button-primary" value="' . __( "Save Changes", "pluginregister" ) . '">
+		</p>
+		
+	</form>
+	';
+}
+
+function pluginregister_new_urls_report( $seconds = 604800 ) {
 	global $wpdb;
 
 	// set up pagination start
-	$limit = 10;
-	if ( !$mini ) $limit = 25;
+	$limit = 25;
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
@@ -412,17 +694,8 @@ function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
 	
 		$days = $seconds / 60 / 60 / 24;
 	
-		if ( !$mini ) {
 		echo '
 		<h3 style="padding-top:2em">' . sprintf( __( "New registered sites in the last %d days", "pluginregister" ), $days ) . '</h3>
-		';
-		} else {
-		echo '
-		<p>' . sprintf( __( 'New registered sites in the last %d days. <a href="plugins.php?page=pluginregister_reports">View full reports</a>.', "pluginregister" ), $days ) . '</p>
-		';
-		}
-		
-		echo '
 		<div class="tablenav">
 		<div class="tablenav-pages">
 		<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
@@ -436,12 +709,8 @@ function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
 			<th>' . __( "Site name", "pluginregister" ) . '</th>
 			<th>' . __( "URL", "pluginregister" ) . '</th>
 			<th>' . __( "First registration", "pluginregister" ) . '</th>
-			';
-			if ( !$mini ) {
-			echo '<th>' . __( "Registrations", "pluginregister" ) . '</th>
-			<th>' . __( "Delete registrations", "pluginregister" ) . '</th>';
-			}
-			echo '
+			<th>' . __( "Registrations", "pluginregister" ) . '</th>
+			<th>' . __( "Delete registrations", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
 
@@ -457,24 +726,22 @@ function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
 		
 			echo '
 			<tr>
-				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $site->url ) . '">' . $site->sitename . '</a></td>
-				<td><a href="' . $site->url . '">' . $site->url . '</a></td>
-				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>';
-				if ( !$mini ) {
+				<td>
+					<a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $site->url ) . '">';
+						if ( $site->sitename == "" ) {
+							echo __( "(no name)", "pluginregister" );
+						} else {
+							echo $site->sitename;
+						}
 				echo '
+					</a></td>
+				<td><a href="' . $site->url . '">' . $site->url . '</a></td>
+				<td>' . date( "F j, Y, g:i a", $site->firstregistration ) . '</td>
 				<td>' . $site->registrations . '</td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;deletesite=' . urlencode( $site->url ) . '" class="button">' . __( "Delete registrations", "pluginregister" ) . '</a></td>
-				';
-				}
-				echo '
 			</tr>
 			<tr>
-				';
-				if ( !$mini ) {
-				echo '<td colspan="5"><span style="font-style: italic">';
-				} else {
-				echo '<td colspan="3"><span style="font-style: italic">';
-				}
+				<td colspan="5"><span style="font-style: italic">';
 				if ( is_array( $plugins ) && count( $plugins ) > 0) {
 					$list = "";
 					foreach( $plugins as $plugin ) {
@@ -503,56 +770,58 @@ function pluginregister_new_urls_report( $seconds = 604800, $mini = true ) {
 	}
 }
 
+// get the last 24 hours fake SQL table
+function pluginregister_last_24hours() {
+	$time = strtotime( "-23 hour" );
+	$sql = "select 0 as x, " . date( "H", $time ) . " as hour\n";
+	for($i = 1; $i < 24; $i++)
+	{
+		$time = strtotime( "+1 hour", $time );
+		$sql .= "union all select " . $i . ", " . date( "H", $time ) . "\n";
+	}
+	return $sql;
+}
+
 // show 24 hour report
 function pluginregister_24hour_report($plugin = "", $version = "")
 {
-
 	global $wpdb;
 	
-	$plugin = $wpdb->escape($plugin);
-	$version = $wpdb->escape($version);
-	
-	$begin = time() - (60 * 60 * 23);
-	$start = $begin;
-	
-	for($i = 0; $i < 24; $i++)
-	{
-		$hours[] = $start;
-	
-		$sql = "select count(id) as num
-			from " . $wpdb->prefix . "plugin_register
-			where hour(FROM_UNIXTIME(time)) = hour(FROM_UNIXTIME(" . $start . "))
-			and day(FROM_UNIXTIME(time)) = day(FROM_UNIXTIME(" . $start . "))
-			and month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
-			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
-			and 
-			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
-			and
-			('" . $version . "' = '' or plugin = '" . $version . "');";
+	$sql = $wpdb->prepare("select hour, count(r.id) as registrations
+			from (
+			" . pluginregister_last_24hours() . "
+			) as hours
+			left outer
+			join " . $wpdb->prefix . "plugin_register r
+			on hour(FROM_UNIXTIME(r.time)) = hour
+			and FROM_UNIXTIME(r.time) > date_add(now(), INTERVAL -24 HOUR)
+			and (%s = '' or plugin = %s)
+			and (%s = '' or pluginversion = %s)
+			group by hour
+			order by x",
+			$plugin,
+			$plugin,
+			$version,
+			$version);
 
-		$registrationsnum[] = $wpdb->get_var($sql);
-		
-		$start = $start + (60 * 60);			
-	}
-	
+	$hours = $wpdb->get_results( $sql );
+
 	$registrationsmax = 0;
 	
-	for($i = 0; $i < 24; $i++)
-	{
-		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
-	}
-	
 	echo '
-	<h4 id="range24hours">' . __("Plugin registrations in the last 24 hours") . '</h4>
+	<div id="range24hours" class="rangereport">
+	<h4>' . __("Plugin registrations in the last 24 hours") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
-			<th style="width:100px"></th>
+			<th style="width:100px">' . __( "Hour", "pluginregister" ) . '</th>
 		';
-	for($i = 0; $i < 24; $i++)
+	foreach( $hours as $hour )
 	{
+		if ( $hour->registrations > $registrationsmax ) { $registrationsmax = $hour->registrations; }
+	
 		echo '
-			<th>' . date("H", $hours[$i]) . '</th>
+			<th>' . $hour->hour . '</th>
 		';
 	}
 	echo '
@@ -563,24 +832,37 @@ function pluginregister_24hour_report($plugin = "", $version = "")
 		<th style="width:100px">' . __("Registrations") . '</th>
 		';
 		
-	for($i = 0; $i < 24; $i++)
+	foreach( $hours as $hour )
 	{
 		echo '
 			<td>';
-		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		if ( $hour->registrations != "0" && $registrationsmax != "0" )
 		{
 		echo '
-			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			<div style="background:#6F6F6F;width:10px;height:' . ( round( ( $hour->registrations / $registrationsmax ) * 100 ) ) . 'px"></div>';
 			}
 		echo '
-			' . $registrationsnum[$i] . '</td>
+			' . $hour->registrations . '</td>
 		';
 	}
 	echo '
 		</tr>
 		</tbody>
 	</table>
+	</div>
 	';
+}
+
+// get the last 14 days fake SQL table
+function pluginregister_last_14days() {
+	$time = strtotime( "-13 day" );
+	$sql = "select 0 as x, " . $time . " as date\n";
+	for($i = 1; $i < 14; $i++)
+	{
+		$time = strtotime( "+1 day", $time );
+		$sql .= "union all select " . $i . ", " . $time . "\n";
+	}
+	return $sql;
 }
 
 // show 14 day report
@@ -589,50 +871,49 @@ function pluginregister_14day_report($plugin = "", $version = "")
 
 	global $wpdb;
 	
-	$plugin = $wpdb->escape($plugin);
-	$version = $wpdb->escape($version);
+	$sql = $wpdb->prepare("select date, count(r.id) as registrations
+			from (
+			" . pluginregister_last_14days() . "
+			) as days
+			left outer
+			join " . $wpdb->prefix . "plugin_register r
+			on day(FROM_UNIXTIME(time)) = day(FROM_UNIXTIME(date))
+			and month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(date))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(date))
+			and (%s = '' or plugin = %s)
+			and (%s = '' or pluginversion = %s)
+			group by date
+			order by x",
+			$plugin,
+			$plugin,
+			$version,
+			$version);
 
-	$begin = time() - (60 * 60 * 24 * 13);
-	$start = $begin;
-	
-	for($i = 0; $i < 14; $i++)
-	{
-		$days[] = date("jS M", $start);
-	
-		$sql = "select count(id) as num
-			from " . $wpdb->prefix . "plugin_register
-			where day(FROM_UNIXTIME(time)) = day(FROM_UNIXTIME(" . $start . "))
-			and month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
-			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
-			and 
-			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
-			and
-			('" . $version . "' = '' or plugin = '" . $version . "');";
+	$days = $wpdb->get_results( $sql );
 
-		$registrationsnum[] = $wpdb->get_var($sql);
-		
-		$start = $start + (60 * 60 * 24);			
-	}
-	
 	$registrationsmax = 0;
 	
-	for($i = 0; $i < 14; $i++)
-	{
-		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
-	}
-	
 	echo '
-	<h4 id="range14days">' . __("Plugin registrations in the last 14 days") . '</h4>
+	<div id="range14days" class="rangereport">
+	<h4>' . __("Plugin registrations in the last 14 days") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
-			<th style="width:100px"></th>
+			<th style="width:100px">' . __( "Day", "pluginregister" ) . '</th>
 		';
-	for($i = 0; $i < 14; $i++)
+	$x = 0;
+	foreach( $days as $day )
 	{
+		if ($day->registrations > $registrationsmax) { $registrationsmax = $day->registrations; }
+	
 		echo '
-			<th>' . $days[$i] . '</th>
+			<th>' . date( "d", $day->date );
+			if ( $x == 0 || date( "d", $day->date ) == 1 ) {
+				echo ' ' . date( "M", $day->date );
+			}
+		echo '</th>
 		';
+		$x++;
 	}
 	echo '
 		</tr>
@@ -642,24 +923,37 @@ function pluginregister_14day_report($plugin = "", $version = "")
 		<th style="width:100px">' . __("Registrations") . '</th>
 		';
 		
-	for($i = 0; $i < 14; $i++)
+	foreach( $days as $day )
 	{
 		echo '
 			<td>';
-		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		if ( $day->registrations != "0" && $registrationsmax != "0")
 		{
 		echo '
-			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			<div style="background:#6F6F6F;width:10px;height:' . ( round( ( $day->registrations / $registrationsmax ) * 100 ) ) . 'px"></div>';
 			}
 		echo '
-			' . $registrationsnum[$i] . '</td>
+			' . $day->registrations . '</td>
 		';
 	}
 	echo '
 		</tr>
 		</tbody>
 	</table>
+	</div>
 	';
+}
+
+// get the last 12 weeks fake SQL table
+function pluginregister_last_12weeks() {
+	$time = strtotime( "-11 week" );
+	$sql = "select 0 as x, " . $time . " as date\n";
+	for($i = 1; $i < 12; $i++)
+	{
+		$time = strtotime( "+1 week", $time );
+		$sql .= "union all select " . $i . ", " . $time . "\n";
+	}
+	return $sql;
 }
 
 // show 12 week report
@@ -668,49 +962,38 @@ function pluginregister_12week_report($plugin = "", $version = "")
 
 	global $wpdb;
 	
-	$plugin = $wpdb->escape($plugin);
-	$version = $wpdb->escape($version);
+	$sql = $wpdb->prepare("select date, count(r.id) as registrations
+			from (
+			" . pluginregister_last_12weeks() . "
+			) as days
+			left outer
+			join " . $wpdb->prefix . "plugin_register r
+			on week(FROM_UNIXTIME(time)) = week(FROM_UNIXTIME(date))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(date))
+			and (%s = '' or plugin = %s)
+			and (%s = '' or pluginversion = %s)
+			group by date
+			order by x",
+			$plugin,
+			$plugin,
+			$version,
+			$version);
 
-	// show 12 week report
-	$begin = time() - (60 * 60 * 24 * 7 * 11);
-	$start = $begin;
-	
-	for($i = 0; $i < 12; $i++)
-	{
-		$weeks[] = date("jS M", $start);
-	
-		$sql = "select count(id) as num
-			from " . $wpdb->prefix . "plugin_register
-			where week(FROM_UNIXTIME(time)) = week(FROM_UNIXTIME(" . $start . "))
-			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
-			and 
-			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
-			and
-			('" . $version . "' = '' or plugin = '" . $version . "');";
-
-		$registrationsnum[] = $wpdb->get_var($sql);
-		
-		$start = $start + (60 * 60 * 24 * 7);			
-	}
-	
-	$registrationsmax = 0;
-	
-	for($i = 0; $i < 12; $i++)
-	{
-		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
-	}
+	$weeks = $wpdb->get_results( $sql );
 	
 	echo '
-	<h4 id="range12weeks">' . __("Plugin registrations in the last 12 weeks") . '</h4>
+	<div id="range12weeks" class="rangereport">
+	<h4>' . __("Plugin registrations in the last 12 weeks") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
-			<th style="width:100px"></th>
+			<th style="width:100px">' . __( "Week", "pluginregister" ) . '</th>
 		';
-	for($i = 0; $i < 12; $i++)
+	foreach( $weeks as $week )
 	{
+		if ( $week->registrations > $registrationsmax ) { $registrationsmax = $week->registrations; }
 		echo '
-			<th>' . $weeks[$i] . '</th>
+			<th>' . date( "W", $week->date ) . '</th>
 		';
 	}
 	echo '
@@ -721,24 +1004,37 @@ function pluginregister_12week_report($plugin = "", $version = "")
 		<th style="width:100px">' . __("Registrations") . '</th>
 		';
 		
-	for($i = 0; $i < 12; $i++)
+	foreach( $weeks as $week )
 	{
 		echo '
 			<td>';
-		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		if ( $week->registrations != "0" && $registrationsmax != "0" )
 		{
 		echo '
-			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			<div style="background:#6F6F6F;width:10px;height:' . ( round( ( $week->registrations / $registrationsmax ) * 100 ) ) . 'px"></div>';
 			}
 		echo '
-			' . $registrationsnum[$i] . '</td>
+			' . $week->registrations . '</td>
 		';
 	}
 	echo '
 		</tr>
 		</tbody>
 	</table>
+	</div>
 	';
+}
+
+// get the last 12 months fake SQL table
+function pluginregister_last_12months() {
+	$time = strtotime( "-11 month" );
+	$sql = "select 0 as x, " . $time . " as date\n";
+	for($i = 1; $i < 12; $i++)
+	{
+		$time = strtotime( "+1 month", $time );
+		$sql .= "union all select " . $i . ", " . $time . "\n";
+	}
+	return $sql;
 }
 
 // show 12 month report
@@ -747,49 +1043,38 @@ function pluginregister_12month_report($plugin = "", $version = "")
 
 	global $wpdb;
 	
-	$plugin = $wpdb->escape($plugin);
-	$version = $wpdb->escape($version);
+	$sql = $wpdb->prepare("select date, count(r.id) as registrations
+			from (
+			" . pluginregister_last_12months() . "
+			) as days
+			left outer
+			join " . $wpdb->prefix . "plugin_register r
+			on month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(date))
+			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(date))
+			and (%s = '' or plugin = %s)
+			and (%s = '' or pluginversion = %s)
+			group by date
+			order by x",
+			$plugin,
+			$plugin,
+			$version,
+			$version);
 
-	// show 12 week report
-	$begin = pluginregister_addMonthToDate( pluginregister_addYearToDate( time(), -1 ), 1);
-	$start = $begin;
-	
-	for($i = 0; $i < 12; $i++)
-	{
-		$months[] = date("M y", $start);
-	
-		$sql = "select count(id) as num
-			from " . $wpdb->prefix . "plugin_register
-			where month(FROM_UNIXTIME(time)) = month(FROM_UNIXTIME(" . $start . "))
-			and year(FROM_UNIXTIME(time)) = year(FROM_UNIXTIME(" . $start . "))
-			and 
-			('" . $plugin . "' = '' or plugin = '" . $plugin . "')
-			and
-			('" . $version . "' = '' or plugin = '" . $version . "');";
-
-		$registrationsnum[] = $wpdb->get_var($sql);
-		
-		$start = pluginregister_addMonthToDate( $start, 1 );
-	}
-	
-	$registrationsmax = 0;
-	
-	for($i = 0; $i < 12; $i++)
-	{
-		if ($registrationsnum[$i] > $registrationsmax) { $registrationsmax = $registrationsnum[$i]; }
-	}
+	$months = $wpdb->get_results( $sql );
 	
 	echo '
-	<h4 id="range12months">' . __("Plugin registrations in the last 12 months") . '</h4>
+	<div id="range12months" class="rangereport">
+	<h4>' . __("Plugin registrations in the last 12 months") . '</h4>
 	<table class="widefat post fixed">
 		<thead>
 		<tr>
 			<th style="width:100px"></th>
 		';
-	for($i = 0; $i < 12; $i++)
+	foreach( $months as $month )
 	{
+		if ($month->registrations > $registrationsmax) { $registrationsmax = $month->registrations; }
 		echo '
-			<th>' . $months[$i] . '</th>
+			<th>' . date( "n", $month->date ) . '</th>
 		';
 	}
 	echo '
@@ -800,23 +1085,24 @@ function pluginregister_12month_report($plugin = "", $version = "")
 		<th style="width:100px">' . __("Registrations") . '</th>
 		';
 		
-	for($i = 0; $i < 12; $i++)
+	foreach( $months as $month )
 	{
 		echo '
 			<td>';
-		if ($registrationsnum[$i] != "0" && $registrationsmax != "0")
+		if ($month->registrations != "0" && $registrationsmax != "0")
 		{
 		echo '
-			<div style="background:#6F6F6F;width:10px;height:' . (round(($registrationsnum[$i]/$registrationsmax)*100)) . 'px"></div>';
+			<div style="background:#6F6F6F;width:10px;height:' . ( round( ( $month->registrations / $registrationsmax ) * 100 ) ) . 'px"></div>';
 			}
 		echo '
-			' . $registrationsnum[$i] . '</td>
+			' . $month->registrations . '</td>
 		';
 	}
 	echo '
 		</tr>
 		</tbody>
 	</table>
+	</div>
 	';
 }
 
@@ -856,7 +1142,24 @@ function pluginregister_plugin_report() {
 	$plugin = urldecode( $_GET["plugin"] );
 
 	echo '
-	<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: ' . $plugin . '</h2>
+	<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: ' . $plugin . '</h2>';
+	
+	// show date range reports
+	echo '
+	<h3>' . __("Date range reports") . '</h3>
+	<ul class="inline">
+		<li><a href="#range24hours" class="button rangebutton">' . __("Last 24 hours") . '</a></li>
+		<li><a href="#range14days" class="button rangebutton">' . __("Last 14 days") . '</a></li>
+		<li><a href="#range12weeks" class="button rangebutton">' . __("Last 12 weeks") . '</a></li>
+		<li><a href="#range12months" class="button rangebutton">' . __("Last 12 months") . '</a></li>
+	</ul>
+	';
+	pluginregister_24hour_report( $plugin );
+	pluginregister_14day_report( $plugin );
+	pluginregister_12week_report( $plugin );
+	pluginregister_12month_report($plugin );
+	
+	echo '
 	<h3>' . __( "Registered versions", "pluginregister" ) . '</h3>
 	';
 	
@@ -916,6 +1219,21 @@ function pluginregister_version_report() {
 	echo '
 	<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: <a href="plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $plugin ) . '">' . $plugin . '</a>: ' . $version . '</h2>
 	';
+	
+	// show date range reports
+	echo '
+	<h3>' . __("Date range reports") . '</h3>
+	<ul class="inline">
+		<li><a href="#range24hours" class="button rangebutton">' . __("Last 24 hours") . '</a></li>
+		<li><a href="#range14days" class="button rangebutton">' . __("Last 14 days") . '</a></li>
+		<li><a href="#range12weeks" class="button rangebutton">' . __("Last 12 weeks") . '</a></li>
+		<li><a href="#range12months" class="button rangebutton">' . __("Last 12 months") . '</a></li>
+	</ul>
+	';
+	pluginregister_24hour_report( $plugin, $version );
+	pluginregister_14day_report( $plugin, $version );
+	pluginregister_12week_report( $plugin, $version );
+	pluginregister_12month_report($plugin, $version );
 	
 	// set up pagination start
 	$limit = 25;
@@ -986,7 +1304,10 @@ function pluginregister_version_report() {
 			<tr>
 				<td>' . $result->plugin . '</td>
 				<td>' . $result->version . '</td>
-				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a></td>
+				<td>
+					<a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a><br />
+					<a href="' . $result->url . '">' . $result->url . '</a>
+				</td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;date=' . date( "Y/n/j", $result->time) . '">' . date( "F j, Y, g:i a", $result->time ) . '</a></td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . $_GET["plugin"] . '&amp;version=' . $_GET["version"] . '&amp;deleteregistration=' . $result->id . '" class="button">' . __( "Delete registration", "pluginregister" ) . '</a></td>
 			</tr>
@@ -1129,7 +1450,7 @@ function pluginregister_url_report() {
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
-	$sql = $wpdb->prepare( "select id, plugin, pluginversion as version, sitename, url, time
+	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS id, plugin, pluginversion as version, sitename, url, time
 							from " . $wpdb->prefix . "plugin_register
 							where url = %s
 							order by time desc
@@ -1220,6 +1541,101 @@ function pluginregister_url_report() {
 
 }
 
+// show the list of sites report
+function pluginregister_sites_report() {
+
+	global $wpdb;
+	
+	// set up pagination start
+	$limit = 100;
+	$start = findStart( $limit );
+	$end = $start + $limit;
+	
+	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS distinct sitename, url
+							from " . $wpdb->prefix . "plugin_register
+							order by url asc
+							limit %d, %d;",
+							$start,
+							$limit );
+	
+	// get the results
+	$results = $wpdb->get_results( $sql );
+	
+	if( $results && is_array( $results ) && count( $results ) > 0 ) {
+	
+		echo '
+		<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: ' . __( "Sites list", "pluginregister" ) . '</h2>
+		';
+	
+		// get the total number of rows
+		$count = $wpdb->get_var( "SELECT FOUND_ROWS();" );
+		
+		if ( $count < $limit ) {
+			$view = $count;
+		} else {
+			$view = ( $start+1 ) . '&ndash;' . $end;
+		}
+
+		// get the pages
+		$pages = findPages($count, $limit);
+		
+		// set up the pagination links
+		$pagelist = paginate_links( array(
+			'base' => add_query_arg( 'paged', '%#%' ),
+			'format' => '',
+			'prev_text' => __('&laquo;'),
+			'next_text' => __('&raquo;'),
+			'total' => $pages,
+			'current' => $_GET['paged']
+		));
+	
+		echo '
+		<div class="tablenav">
+		<div class="tablenav-pages">
+		<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
+			' . $pagelist . '
+		</div>
+		</div>
+		<table class="widefat fixed" cellspacing="0">
+
+		<thead>
+		<tr class="thead">
+			<th>' . __( "Site", "pluginregister" ) . '</th>
+			<th>' . __( "URL", "pluginregister" ) . '</th>
+		</tr>
+		</thead>
+
+		<tbody>
+		';
+		foreach ( $results as $result ) {
+			echo '
+			<tr>
+				<td><a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a></td>
+				<td><a href="' . $result->url . '">' . $result->url . '</a></td>
+			</tr>
+			';
+		}
+		echo '
+		</tbody>
+		</table>
+		<div class="tablenav">
+		<div class="tablenav-pages">
+		<span class="displaying-num">Displaying ' . $view . ' of ' . $count . '</span>
+			' . $pagelist . '
+		</div>
+		</div>
+		';
+	} else {
+		echo '
+
+		<h2><a href="plugins.php?page=pluginregister_reports">' . __( "Plugin Register", "pluginregister" ) . '</a>: ' . $url . '</h2>
+
+		<p>' . __( "No registrations found for this site URL", "pluginregister" ) . '</p>
+		';
+	}
+
+}
+
 // show the date report
 function pluginregister_date_report() {
 
@@ -1236,7 +1652,7 @@ function pluginregister_date_report() {
 	$start = findStart( $limit );
 	$end = $start + $limit;
 	
-	$sql = $wpdb->prepare( "select plugin, pluginversion as version, sitename, url, time
+	$sql = $wpdb->prepare( "select SQL_CALC_FOUND_ROWS plugin, pluginversion as version, sitename, url, time
 							from " . $wpdb->prefix . "plugin_register
 							where year(FROM_UNIXTIME(time)) = %s
 							and month(FROM_UNIXTIME(time)) = %s
@@ -1289,6 +1705,7 @@ function pluginregister_date_report() {
 		<tr class="thead">
 			<th>' . __( "Plugin", "pluginregister" ) . '</th>
 			<th>' . __( "Version", "pluginregister" ) . '</th>
+			<th>' . __( "Site", "pluginregister" ) . '</th>
 			<th>' . __( "Registration date", "pluginregister" ) . '</th>
 		</tr>
 		</thead>
@@ -1300,6 +1717,10 @@ function pluginregister_date_report() {
 			<tr>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '">' . $result->plugin . '</a></td>
 				<td><a href="plugins.php?page=pluginregister_reports&amp;plugin=' . urlencode( $result->plugin ) . '&amp;version=' . urlencode( $result->version ) . '">' . $result->version . '</a></td>
+				<td>
+					<a href="plugins.php?page=pluginregister_reports&amp;url=' . urlencode( $result->url ) . '">' . $result->sitename . '</a><br />
+					<a href="' . $result->url . '">' . $result->url . '</a>
+				</td>
 				<td>' . date( "F j, Y, g:i a", $result->time ) . '</td>
 			</tr>
 			';

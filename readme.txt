@@ -3,7 +3,7 @@ Contributors: mrwiblog
 Donate link: http://www.stillbreathing.co.uk/donate/
 Tags: plugin, register, activation, count, statistics, developer
 Requires at least: 2.8
-Tested up to: 3.5
+Tested up to: 4.2
 Stable tag: 0.6.1
 
 For Wordpress plugin developers: keep a register of when and where your plugins are activated.
